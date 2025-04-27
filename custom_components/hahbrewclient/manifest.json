@@ -6,7 +6,7 @@
     "dependencies": [],
     "codeowners": ["@stuartp44"],
     "integration_type": "device",
-    "requirements": ["pymbrewclient>=1.0.8"],
+    "requirements": ["pymbrewclient>=1.0.10"],
     "iot_class": "cloud_polling",
     "config_flow": true
   }
