@@ -2,7 +2,7 @@ import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
 from .const import DOMAIN
-from pymbrewclient import pymbrewclient
+from pymbrewclient import breweryclient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     minibrew_password = entry.data["minibrew_password"]
 
     try:
-        minibrew_client = pymbrewclient(username=minibrew_username, password=minibrew_password)
+        minibrew_client = breweryclient(username=minibrew_username, password=minibrew_password)
         _LOGGER.debug(f"Minibrew initialized")
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN] = minibrew_client
