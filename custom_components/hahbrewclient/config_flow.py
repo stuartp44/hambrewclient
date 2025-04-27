@@ -6,7 +6,7 @@ from homeassistant.data_entry_flow import FlowResult
 from dataclasses import asdict
 
 from .const import DOMAIN
-from pymbrewclient import breweryclient
+from pymbrewclient import BreweryClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class PymbrewClientConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         password = user_input["password"]
         try:
             # Initialize the client and fetch the brewery overview
-            client = breweryclient(username, password)
+            client = BreweryClient(username, password)
             brewery_overview = await self.hass.async_add_executor_job(client.get_brewery_overview)
 
             # Create entries for each device in the brewery overview
