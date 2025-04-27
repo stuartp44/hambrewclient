@@ -6,7 +6,7 @@ from homeassistant.data_entry_flow import FlowResult
 from dataclasses import asdict
 
 from .const import DOMAIN
-from .pymbrewclient import PymbrewClient  # Assuming this is the client library
+from pymbrewclient import PymbrewClient  # Assuming this is the client library
 
 _LOGGER = logging.getLogger(__name__)
 
