@@ -35,9 +35,11 @@ class PymbrewClientConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Initialize the client and fetch the brewery overview
             client = BreweryClient(username, password)
             brewery_overview = await self.hass.async_add_executor_job(client.get_brewery_overview)
+            _LOGGER.info(f"Brewery overview: {brewery_overview}")
 
             # Create entries for each device in the brewery overview
             for state, devices in asdict(brewery_overview).items():
+                _LOGGER.info(f"Devices in state {state}: {devices}")
                 for device in devices:
                     unique_id = device.uuid
                     await self.async_set_unique_id(unique_id, raise_on_progress=False)
