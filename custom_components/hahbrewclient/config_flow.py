@@ -38,7 +38,7 @@ class PymbrewClientConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.debug(f"Brewery overview: {brewery_overview}")
 
             # make sure we have some devices
-            if not brewery_overview.devices:
+            if not brewery_overview:
                 return self._show_user_form(errors={"base": "no_devices_found"})
             else:
                 return self.async_create_entry(
