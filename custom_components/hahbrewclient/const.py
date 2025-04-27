@@ -1,0 +1,2 @@
+DOMAIN = "minibrew"
+MANUFACTURER = "MiniBrew"
