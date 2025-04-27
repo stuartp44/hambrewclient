@@ -6,7 +6,7 @@ from homeassistant.data_entry_flow import FlowResult
 from dataclasses import asdict
 
 from .const import DOMAIN
-from pymbrewclient import BreweryClient
+from pymbrewclient import BreweryClient, Device
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,7 +40,9 @@ class PymbrewClientConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Create entries for each device in the brewery overview
             for state, devices in asdict(brewery_overview).items():
                 _LOGGER.debug(f"Devices in state {state}: {devices}")
-                for device in devices:
+                for device_data in devices:
+                    # Convert the dictionary to a Device object
+                    device = Device(**device_data)
                     unique_id = device.uuid
                     await self.async_set_unique_id(unique_id, raise_on_progress=False)
                     if self._is_existing_entry(unique_id):
