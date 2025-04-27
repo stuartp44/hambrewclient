@@ -33,7 +33,7 @@ class PymbrewClientConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         password = user_input["password"]
         try:
             # Initialize the client and fetch the brewery overview
-            client = PymbrewClient(username, password)
+            client = pymbrewclient(username, password)
             brewery_overview = await self.hass.async_add_executor_job(client.get_brewery_overview)
 
             # Create entries for each device in the brewery overview
