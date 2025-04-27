@@ -37,40 +37,26 @@ class PymbrewClientConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             brewery_overview = await self.hass.async_add_executor_job(client.get_brewery_overview)
             _LOGGER.debug(f"Brewery overview: {brewery_overview}")
 
-            # Create entries for each device in the brewery overview
-            for state, devices in asdict(brewery_overview).items():
-                _LOGGER.debug(f"Devices in state {state}: {devices}")
-                for device_data in devices:
-                    # Convert the dictionary to a Device object
-                    device = Device(**device_data)
-                    unique_id = device.uuid
-                    await self.async_set_unique_id(unique_id, raise_on_progress=False)
-                    if self._is_existing_entry(unique_id):
-                        continue
+            # make sure we have some devices
+            if not brewery_overview.devices:
+                return self._show_user_form(errors={"base": "no_devices_found"})
+            else:
+                return self.async_create_entry(
+                title="Minibrew",
+                data={
+                    "username": username,
+                    "password": password,
+                    "brewery_overview": asdict(brewery_overview),
+                    },
+                )
 
-                    self._create_device_entry(device, state)
-
-            return self.async_abort(reason="devices_configured")  # All devices are configured
         except ConnectionError:
             return self._show_user_form(errors={"base": "cannot_connect"})
+        except ConnectionError:
+            return self._show_user_form(errors={"host": "cannot_connect"})
         except RuntimeError:
             return self._show_user_form(errors={"base": "unknown_error"})
 
-    def _create_device_entry(self, device, state: str):
-        """Create a config entry for a single device."""
-        self.async_create_entry(
-            title=f"{device.title} ({state})",
-            data={
-                "uuid": device.uuid,
-                "serial_number": device.serial_number,
-                "device_type": device.device_type,
-                "state": state,
-                "beer_name": device.beer_name,
-                "current_temp": device.current_temp,
-                "target_temp": device.target_temp,
-                "online": device.online,
-            },
-        )
 
     def _show_user_form(self, errors=None) -> FlowResult:
         """Show the user form for manual configuration."""
