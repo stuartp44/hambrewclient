@@ -47,7 +47,7 @@ class MiniBrewSensor(SensorEntity):
             "name": device.title,
             "manufacturer": "MiniBrew",
             "model": device.device_type,
-            "firmware_version": device.firmware_version,
+            "firmware_version": device.software_version,
         }
 
     @property
@@ -120,7 +120,7 @@ class KegSensor(SensorEntity):
             "name": device.title,
             "manufacturer": "MiniBrew",
             "model": device.device_type,
-            "firmware_version": device.firmware_version,
+            "firmware_version": device.software_version,
         }
 
     @property
