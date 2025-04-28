@@ -46,7 +46,7 @@ class MiniBrewSensor(SensorEntity):
             "identifiers": {(DOMAIN, device.serial_number)},
             "name": device.title,
             "manufacturer": "MiniBrew",
-            "model": device.device_type,
+            "model": "Craft",
             "sw_version": device.software_version,
         }
 
@@ -119,7 +119,7 @@ class KegSensor(SensorEntity):
             "identifiers": {(DOMAIN, device.serial_number)},
             "name": device.title,
             "manufacturer": "MiniBrew",
-            "model": device.device_type,
+            "model": "Smart Keg",
             "sw_version": device.software_version,
         }
 
