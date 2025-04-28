@@ -4,6 +4,7 @@ from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
 from .const import DOMAIN
 from pymbrewclient import BreweryClient
 
+
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -11,10 +12,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     _LOGGER.debug("Setting up Minibrew integration")
     return True
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up Minibrew from a config entry."""
-    minibrew_username = entry.data["minibrew_username"]
-    minibrew_password = entry.data["minibrew_password"]
+    minibrew_username = config_entry.data["username"]
+    minibrew_password = config_entry.data["password"]
 
     try:
         minibrew_client = BreweryClient(username=minibrew_username, password=minibrew_password)
@@ -25,7 +26,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Could not connect to Minibrew: %s", ex)
         raise ConfigEntryNotReady from ex
 
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+    await hass.config_entries.async_forward_entry_setups(config_entry, ["sensor"])
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

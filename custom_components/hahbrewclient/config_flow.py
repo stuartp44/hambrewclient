@@ -42,11 +42,10 @@ class PymbrewClientConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self._show_user_form(errors={"base": "no_devices_found"})
             else:
                 return self.async_create_entry(
-                title="Minibrew",
+                title="Minibrew Pro",
                 data={
                     "username": username,
                     "password": password,
-                    "brewery_overview": asdict(brewery_overview),
                     },
                 )
 
