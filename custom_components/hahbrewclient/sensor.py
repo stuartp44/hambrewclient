@@ -113,7 +113,7 @@ class KegSensor(SensorEntity):
     def __init__(self, device: Device, state: str):
         """Initialize the sensor."""
         self.device = device
-        self.state = state
+        self._state = state
         self._attr_device_info = {
             "identifiers": {(DOMAIN, device.serial_number)},
             "name": device.title,
@@ -133,7 +133,7 @@ class KegTemperatureSensor(KegSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{self.device.title} Temperature ({self.state})"
+        return f"{self.device.title} Temperature ({self._state})"
 
     @property
     def state(self):
@@ -152,7 +152,7 @@ class KegBeerStyleSensor(KegSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{self.device.title} Beer Style ({self.state})"
+        return f"{self.device.title} Beer Style ({self._state})"
 
     @property
     def state(self):
@@ -166,7 +166,7 @@ class KegOnlineStatusSensor(KegSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{self.device.title} Online Status ({self.state})"
+        return f"{self.device.title} Online Status ({self._state})"
 
     @property
     def state(self):
