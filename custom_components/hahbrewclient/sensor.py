@@ -52,7 +52,7 @@ class MiniBrewSensor(SensorEntity):
     @property
     def unique_id(self):
         """Return a unique ID for the sensor."""
-        return f"{self.device.serial_number}_{self.state}_{self.name}"
+        return f"{self.device.serial_number}_{self.name}"
 
 class MiniBrewBrewStageSensor(MiniBrewSensor):
     """Sensor for the current brew stage of the MiniBrew device."""
@@ -127,10 +127,10 @@ class KegSensor(SensorEntity):
     @property
     def unique_id(self):
         """Return a unique ID for the sensor."""
-        return f"{self.device.serial_number}_{self.state}_{self.name}"
+        return f"{self.device.serial_number}_{self.name}"
 
 
-class KegTemperatureSensor(KegSensor):
+class KegCurrentTemperatureSensor(KegSensor):
     """Sensor for the current temperature of the Keg device."""
 
     @property
@@ -142,6 +142,24 @@ class KegTemperatureSensor(KegSensor):
     def state(self):
         """Return the current temperature."""
         return self.device.current_temp
+
+    @property
+    def unit_of_measurement(self):
+        """Return the unit of measurement."""
+        return "°C"
+
+class KegTargetTemperatureSensor(KegSensor):
+    """Sensor for the Target temperature of the Keg device."""
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Temperature"
+
+    @property
+    def state(self):
+        """Return the current temperature."""
+        return self.device.target_temp
 
     @property
     def unit_of_measurement(self):
