@@ -1,7 +1,7 @@
 import logging
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
-from pymbrewclient import BreweryOverview, Device  # Import models
+from pymbrewclient import BreweryOverview, Device
 
 from .const import DOMAIN
 
