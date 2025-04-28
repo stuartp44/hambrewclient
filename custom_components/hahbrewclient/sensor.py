@@ -28,7 +28,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 sensors.append(MiniBrewOnlineStatusSensor(device, state))
             # Add sensors for Keg devices
             elif device.device_type == 1:  # Keg device
-                sensors.append(KegTemperatureSensor(device, state))
+                sensors.append(KegCurrentTemperatureSensor(device, state))
+                sensors.append(KegTargetTemperatureSensor(device, state))
                 sensors.append(KegBeerStyleSensor(device, state))
                 sensors.append(KegOnlineStatusSensor(device, state))
 
