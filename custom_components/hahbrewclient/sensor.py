@@ -61,7 +61,7 @@ class MiniBrewTemperatureSensor(MiniBrewSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{self.device.title} Temperature ({self.state})"
+        return f"{self.device.title} Temperature ({self._state})"
 
     @property
     def state(self):
@@ -80,7 +80,7 @@ class MiniBrewGravitySensor(MiniBrewSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{self.device.title} Gravity ({self.state})"
+        return f"{self.device.title} Gravity ({self._state})"
 
     @property
     def state(self):
@@ -94,7 +94,7 @@ class MiniBrewOnlineStatusSensor(MiniBrewSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{self.device.title} Online Status ({self.state})"
+        return f"{self.device.title} Online Status ({self._state})"
 
     @property
     def state(self):
