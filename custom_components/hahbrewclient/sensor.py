@@ -25,7 +25,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             # Add sensors for MiniBrew devices
             if device.device_type == 0:  # MiniBrew device
                 sensors.append(MiniBrewTemperatureSensor(device, state))
-                sensors.append(MiniBrewGravitySensor(device, state))
                 sensors.append(MiniBrewOnlineStatusSensor(device, state))
             # Add sensors for Keg devices
             elif device.device_type == 1:  # Keg device
@@ -55,6 +54,23 @@ class MiniBrewSensor(SensorEntity):
         """Return a unique ID for the sensor."""
         return f"{self.device.serial_number}_{self.state}_{self.name}"
 
+class MiniBrewBrewStageSensor(MiniBrewSensor):
+    """Sensor for the current brew stage of the MiniBrew device."""
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Brew Stage"
+
+    @property
+    def state(self):
+        """Return the current brew stage."""
+        return self.device.brew_stage
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:beer"
 
 class MiniBrewTemperatureSensor(MiniBrewSensor):
     """Sensor for the current temperature of the MiniBrew device."""
@@ -62,7 +78,7 @@ class MiniBrewTemperatureSensor(MiniBrewSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{self.device.title} Temperature ({self._state})"
+        return "Temperature"
 
     @property
     def state(self):
@@ -74,28 +90,13 @@ class MiniBrewTemperatureSensor(MiniBrewSensor):
         """Return the unit of measurement."""
         return "°C"
 
-
-class MiniBrewGravitySensor(MiniBrewSensor):
-    """Sensor for the gravity of the MiniBrew device."""
-
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return f"{self.device.title} Gravity ({self._state})"
-
-    @property
-    def state(self):
-        """Return the gravity."""
-        return self.device.gravity
-
-
 class MiniBrewOnlineStatusSensor(MiniBrewSensor):
     """Sensor for the online status of the MiniBrew device."""
 
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{self.device.title} Online Status ({self._state})"
+        return "Cloud Connection"
 
     @property
     def state(self):
@@ -135,7 +136,7 @@ class KegTemperatureSensor(KegSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{self.device.title} Temperature ({self._state})"
+        return "Temperature"
 
     @property
     def state(self):
@@ -154,7 +155,7 @@ class KegBeerStyleSensor(KegSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{self.device.title} Beer Style ({self._state})"
+        return "Beer Style"
 
     @property
     def state(self):
@@ -168,7 +169,7 @@ class KegOnlineStatusSensor(KegSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{self.device.title} Online Status ({self._state})"
+        return "Cloud Connection"
 
     @property
     def state(self):
