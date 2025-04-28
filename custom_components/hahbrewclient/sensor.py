@@ -41,7 +41,7 @@ class MiniBrewSensor(SensorEntity):
     def __init__(self, device: Device, state: str):
         """Initialize the sensor."""
         self.device = device
-        self.state = state
+        self._state = state 
         self._attr_device_info = {
             "identifiers": {(DOMAIN, device.serial_number)},
             "name": device.title,
