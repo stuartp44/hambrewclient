@@ -14,7 +14,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     # Fetch the brewery overview directly from the client
     brewery_overview: BreweryOverview = await hass.async_add_executor_job(client.get_brewery_overview)
-
+    _LOGGER.debug(f"Brewery overview: {brewery_overview}")
+    
     # Iterate through all states and devices
     for state, devices in brewery_overview.__dict__.items():  # Access states dynamically
         _LOGGER.debug(f"State: {state}, Devices: {devices}")
