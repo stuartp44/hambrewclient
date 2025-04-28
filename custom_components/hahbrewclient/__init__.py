@@ -21,7 +21,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         minibrew_client = BreweryClient(username=minibrew_username, password=minibrew_password)
         _LOGGER.debug(f"Minibrew initialized")
         hass.data.setdefault(DOMAIN, {})
-        hass.data[DOMAIN] = minibrew_client
+        hass.data[DOMAIN][config_entry.entry_id] = minibrew_client
     except Exception as ex:
         _LOGGER.error("Could not connect to Minibrew: %s", ex)
         raise ConfigEntryNotReady from ex
