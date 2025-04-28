@@ -19,7 +19,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     # Iterate through all states and devices
     for state, devices in brewery_overview.__dict__.items():  # Access states dynamically
         _LOGGER.debug(f"State: {state}, Devices: {devices}")
-        for device in devices:
+        for device_data in devices:
+            # Convert the raw dictionary to a Device object
+            device = Device(**device_data)
             # Add sensors for MiniBrew devices
             if device.device_type == 0:  # MiniBrew device
                 sensors.append(MiniBrewTemperatureSensor(device, state))
