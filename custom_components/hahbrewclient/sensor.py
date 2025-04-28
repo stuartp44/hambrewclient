@@ -72,6 +72,11 @@ class MiniBrewBrewStageSensor(MiniBrewSensor):
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:beer"
+    
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
 
 class MiniBrewTemperatureSensor(MiniBrewSensor):
     """Sensor for the current temperature of the MiniBrew device."""
@@ -90,6 +95,11 @@ class MiniBrewTemperatureSensor(MiniBrewSensor):
     def unit_of_measurement(self):
         """Return the unit of measurement."""
         return "°C"
+    
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
 
 class MiniBrewOnlineStatusSensor(MiniBrewSensor):
     """Sensor for the online status of the MiniBrew device."""
@@ -108,6 +118,11 @@ class MiniBrewOnlineStatusSensor(MiniBrewSensor):
     def entity_category(self):
         """Return the entity category."""
         return EntityCategory.DIAGNOSTIC
+    
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
 
 
 class KegSensor(SensorEntity):
@@ -148,6 +163,11 @@ class KegCurrentTemperatureSensor(KegSensor):
     def unit_of_measurement(self):
         """Return the unit of measurement."""
         return "°C"
+    
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
 
 class KegTargetTemperatureSensor(KegSensor):
     """Sensor for the Target temperature of the Keg device."""
@@ -166,7 +186,11 @@ class KegTargetTemperatureSensor(KegSensor):
     def unit_of_measurement(self):
         """Return the unit of measurement."""
         return "°C"
-
+    
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
 
 class KegBeerStyleSensor(KegSensor):
     """Sensor for the beer style of the Keg device."""
@@ -181,6 +205,10 @@ class KegBeerStyleSensor(KegSensor):
         """Return the beer style."""
         return self.device.beer_style
 
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
 
 class KegOnlineStatusSensor(KegSensor):
     """Sensor for the online status of the Keg device."""
@@ -199,3 +227,8 @@ class KegOnlineStatusSensor(KegSensor):
     def entity_category(self):
         """Return the entity category."""
         return EntityCategory.DIAGNOSTIC
+    
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
