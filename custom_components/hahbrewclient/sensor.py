@@ -311,6 +311,34 @@ class CraftSensorCurrentStageSensor(CraftSensor):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_current_stage"
 
+class CraftSensorTimeInStageSensor(CraftSensor):
+    """Sensor for the time spent in the current stage of the Craft device."""
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Time in Stage"
+
+    @property
+    def native_value(self):
+        """Return the time spent in the current stage."""
+        device = self._get_latest_device()
+        return device.get("status_time") if device else None
+
+    @property
+    def unit_of_measurement(self):
+        """Return the unit of measurement."""
+        return "seconds"
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:clock"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_time_in_stage"
 
 class CraftSensorNeedsCleaningSensor(CraftSensor):
     """Sensor for the cleaning status of the Craft device."""
