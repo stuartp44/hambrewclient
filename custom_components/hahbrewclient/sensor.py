@@ -132,7 +132,7 @@ class MiniBrewCurrentTemperatureSensor(MiniBrewSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return "Temperature"
+        return "Current Temperature"
 
     @property
     def state(self):
@@ -143,7 +143,12 @@ class MiniBrewCurrentTemperatureSensor(MiniBrewSensor):
     def unit_of_measurement(self):
         """Return the unit of measurement."""
         return "°C"
-    
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:thermometer"
+
     @property
     def identify(self):
         """Return the unique ID of the sensor."""
@@ -166,6 +171,11 @@ class MiniBrewTargetTemperatureSensor(MiniBrewSensor):
     def unit_of_measurement(self):
         """Return the unit of measurement."""
         return "°C"
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:thermometer"
     
     @property
     def identify(self):
@@ -298,7 +308,12 @@ class KegCurrentTemperatureSensor(KegSensor):
     def unit_of_measurement(self):
         """Return the unit of measurement."""
         return "°C"
-    
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:thermometer"
+
     @property
     def identify(self):
         """Return the unique ID of the sensor."""
@@ -321,7 +336,12 @@ class KegTargetTemperatureSensor(KegSensor):
     def unit_of_measurement(self):
         """Return the unit of measurement."""
         return "°C"
-    
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:thermometer"
+
     @property
     def identify(self):
         """Return the unique ID of the sensor."""
@@ -357,7 +377,7 @@ class KegOnlineStatusSensor(KegSensor):
     def state(self):
         """Return the online status."""
         return "Online" if self.device.online else "Offline"
-
+    
     @property
     def entity_category(self):
         """Return the entity category."""
