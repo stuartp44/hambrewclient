@@ -265,7 +265,14 @@ class CraftSensorCurrentStageSensor(CraftSensor):
     @property
     def state(self):
         """Return the current stage."""
-        return self.device.stage
+        if self._state == "brew_clean_idle":
+            return "Clean and Ready to Brew"
+        elif self._state == "fermenting":
+            return "Fermenting"
+        elif self._state == "serving":
+            return "Serving"
+        elif self._state == "brew_acid_clean_idle":
+            return "Clean Required"
 
     @property
     def icon(self):
