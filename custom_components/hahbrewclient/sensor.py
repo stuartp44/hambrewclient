@@ -29,17 +29,17 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             device = Device(**device_data)
             # Add sensors for MiniBrew devices
             if device.device_type == 0:  # MiniBrew device
-                sensors.append(MiniBrewTemperatureSensor(device, state))
-                sensors.append(MiniBrewOnlineStatusSensor(device, state))
-                sensors.append(MiniBrewIsUpdatingSensor(device, state))
-                sensors.append(MiniBrewBrewStageSensor(device, state))
+                sensors.append(MiniBrewTemperatureSensor(device, coordinator, state))
+                sensors.append(MiniBrewOnlineStatusSensor(device, coordinator, state))
+                sensors.append(MiniBrewIsUpdatingSensor(device, coordinator, state))
+                sensors.append(MiniBrewBrewStageSensor(device, coordinator, state))
             # Add sensors for Keg devices
             elif device.device_type == 1:  # Keg device
-                sensors.append(KegCurrentTemperatureSensor(device, state))
-                sensors.append(KegTargetTemperatureSensor(device, state))
-                sensors.append(KegBeerStyleSensor(device, state))
-                sensors.append(KegOnlineStatusSensor(device, state))
-                sensors.append(KegIsUpdatingSensor(device, state))
+                sensors.append(KegCurrentTemperatureSensor(device, coordinator, state))
+                sensors.append(KegTargetTemperatureSensor(device, coordinator, state))
+                sensors.append(KegBeerStyleSensor(device, coordinator, state))
+                sensors.append(KegOnlineStatusSensor(device, coordinator, state))
+                sensors.append(KegIsUpdatingSensor(device, coordinator, state))
 
     async_add_entities(sensors)
 
