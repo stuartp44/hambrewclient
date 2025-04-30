@@ -78,7 +78,7 @@ class CraftSensor(SensorEntity):
     def __init__(self, coordinator, device: Device, state: str):
         """Initialize the sensor."""
         self.coordinator = coordinator
-        self.device_id = device.device_id
+        self.device_id = device.serial_number 
         self.device_type = state
         self._attr_device_info = {
             "identifiers": {(DOMAIN, device.serial_number)},
@@ -115,7 +115,7 @@ class CraftSensor(SensorEntity):
         """Get the latest device data from the coordinator."""
         devices = getattr(self.coordinator.data, self.device_type, [])
         for dev in devices:
-            if dev["device_id"] == self.device_id:
+            if dev["serial_number"] == self.device_id:
                 return dev
         return None
 
@@ -345,7 +345,7 @@ class KegSensor(SensorEntity):
     def __init__(self, coordinator, device: Device, state: str):
         """Initialize the sensor."""
         self.coordinator = coordinator
-        self.device_id = device.device_id  # or serial_number if that’s the unique one
+        self.device_id = device.serial_number
         self.device_type = state
         self._attr_device_info = {
             "identifiers": {(DOMAIN, device.serial_number)},
@@ -382,7 +382,7 @@ class KegSensor(SensorEntity):
         """Get the latest device data from the coordinator."""
         devices = getattr(self.coordinator.data, self.device_type, [])
         for dev in devices:
-            if dev["device_id"] == self.device_id:
+            if dev["serial_number"] == self.device_id:
                 return dev
         return None
 
