@@ -28,12 +28,14 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             # Convert the raw dictionary to a Device object
             device = Device(**device_data)
             # Add sensors for MiniBrew devices
-            if device.device_type == 0:  # MiniBrew device
-                sensors.append(MiniBrewCurrentTemperatureSensor(coordinator, device,  state))
-                sensors.append(MiniBrewTargetTemperatureSensor(coordinator, device, state))
-                sensors.append(MiniBrewOnlineStatusSensor(coordinator, device, state))
-                sensors.append(MiniBrewIsUpdatingSensor(coordinator, device, state))
-                sensors.append(MiniBrewBrewStageSensor(coordinator, device, state))
+            if device.device_type == 0:  # Craft device
+                sensors.append(CraftSensorCurrentTemperatureSensor(coordinator, device,  state))
+                sensors.append(CraftSensorTargetTemperatureSensor(coordinator, device, state))
+                sensors.append(CraftSensorOnlineStatusSensor(coordinator, device, state))
+                sensors.append(CraftSensorIsUpdatingSensor(coordinator, device, state))
+                sensors.append(CraftSensorBrewStageSensor(coordinator, device, state))
+                sensors.append(CraftSensorCurrentStageSensor(coordinator, device, state))
+                sensors.append(CraftSensorNeedsCleaningSensor(coordinator, device, state))
             # Add sensors for Keg devices
             elif device.device_type == 1:  # Keg device
                 sensors.append(KegCurrentTemperatureSensor(coordinator, device, state))
@@ -41,6 +43,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 sensors.append(KegBeerStyleSensor(coordinator, device, state))
                 sensors.append(KegOnlineStatusSensor(coordinator,device, state))
                 sensors.append(KegIsUpdatingSensor(coordinator, device, state))
+                sensors.append(KegNeedsCleaningSensor(coordinator, device, state))
+                
 
     async_add_entities(sensors)
 
@@ -64,7 +68,7 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise UpdateFailed(f"Error fetching data: {err}")
 
-class MiniBrewSensor(SensorEntity):
+class CraftSensor(SensorEntity):
     """Base class for MiniBrew sensors."""
 
     def __init__(self, coordinator, device: Device, state: str):
@@ -103,8 +107,8 @@ class MiniBrewSensor(SensorEntity):
         """Register callbacks."""
         self.async_on_remove(self.coordinator.async_add_listener(self.async_write_ha_state))
 
-class MiniBrewBrewStageSensor(MiniBrewSensor):
-    """Sensor for the current brew stage of the MiniBrew device."""
+class CraftSensorBrewStageSensor(CraftSensor):
+    """Sensor for the current brew stage of the Craft device."""
 
     @property
     def name(self):
@@ -126,8 +130,8 @@ class MiniBrewBrewStageSensor(MiniBrewSensor):
         """Return the unique ID of the sensor."""
         return f"{self.device.serial_number}_{self.name}"
 
-class MiniBrewCurrentTemperatureSensor(MiniBrewSensor):
-    """Sensor for the current temperature of the MiniBrew device."""
+class CraftSensorCurrentTemperatureSensor(CraftSensor):
+    """Sensor for the current temperature of the Craft device."""
 
     @property
     def name(self):
@@ -137,7 +141,11 @@ class MiniBrewCurrentTemperatureSensor(MiniBrewSensor):
     @property
     def state(self):
         """Return the current temperature."""
-        return self.device.current_temp
+        # If available, return the current temperature else mark as unavailable
+        if not self.device.current_temp:
+            return None
+        else:
+            return self.device.current_temp
 
     @property
     def unit_of_measurement(self):
@@ -154,8 +162,8 @@ class MiniBrewCurrentTemperatureSensor(MiniBrewSensor):
         """Return the unique ID of the sensor."""
         return f"{self.device.serial_number}_{self.name}"
 
-class MiniBrewTargetTemperatureSensor(MiniBrewSensor):
-    """Sensor for the target temperature of the MiniBrew device."""
+class CraftSensorTargetTemperatureSensor(CraftSensor):
+    """Sensor for the target temperature of the Craft device."""
 
     @property
     def name(self):
@@ -165,7 +173,11 @@ class MiniBrewTargetTemperatureSensor(MiniBrewSensor):
     @property
     def state(self):
         """Return the target temperature."""
-        return self.device.target_temp
+        # If available, return the target temperature else mark as unavailable
+        if not self.device.target_temp:
+            return None
+        else:
+            return self.device.target_temp
 
     @property
     def unit_of_measurement(self):
@@ -182,8 +194,8 @@ class MiniBrewTargetTemperatureSensor(MiniBrewSensor):
         """Return the unique ID of the sensor."""
         return f"{self.device.serial_number}_{self.name}"
 
-class MiniBrewOnlineStatusSensor(MiniBrewSensor):
-    """Sensor for the online status of the MiniBrew device."""
+class CraftSensorOnlineStatusSensor(CraftSensor):
+    """Sensor for the online status of the Craft device."""
 
     @property
     def name(self):
@@ -210,8 +222,8 @@ class MiniBrewOnlineStatusSensor(MiniBrewSensor):
         """Return the unique ID of the sensor."""
         return f"{self.device.serial_number}_{self.name}"
 
-class MiniBrewIsUpdatingSensor(MiniBrewSensor):
-    """Sensor for the update status of the MiniBrew device."""
+class CraftSensorIsUpdatingSensor(CraftSensor):
+    """Sensor for the update status of the Craft device."""
 
     @property
     def name(self):
@@ -238,8 +250,8 @@ class MiniBrewIsUpdatingSensor(MiniBrewSensor):
         """Return the unique ID of the sensor."""
         return f"{self.device.serial_number}_{self.name}"
 
-class MiniBrewCurrentStageSensor(MiniBrewSensor):
-    """Sensor for the current stage of the MiniBrew device."""
+class CraftSensorCurrentStageSensor(CraftSensor):
+    """Sensor for the current stage of the Craft device."""
 
     @property
     def name(self):
@@ -255,6 +267,34 @@ class MiniBrewCurrentStageSensor(MiniBrewSensor):
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:beer"
+    
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
+
+class CraftSensorNeedsCleaningSensor(CraftSensor):
+    """Sensor for the cleaning status of the Craft device."""
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Needs Cleaning"
+
+    @property
+    def state(self):
+        """Return the cleaning status."""
+        return "Needs Cleaning" if self.device.needs_acid_cleaning else "Clean"
+
+    @property
+    def entity_category(self):
+        """Return the entity category."""
+        return EntityCategory.DIAGNOSTIC
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:broom"
     
     @property
     def identify(self):
@@ -300,7 +340,6 @@ class KegSensor(SensorEntity):
         """Register callbacks."""
         self.async_on_remove(self.coordinator.async_add_listener(self.async_write_ha_state))
 
-
 class KegCurrentTemperatureSensor(KegSensor):
     """Sensor for the current temperature of the Keg device."""
 
@@ -312,7 +351,10 @@ class KegCurrentTemperatureSensor(KegSensor):
     @property
     def state(self):
         """Return the current temperature."""
-        return self.device.current_temp
+        if not self.device.current_temp:
+            return None
+        else:
+            return self.device.current_temp
 
     @property
     def unit_of_measurement(self):
@@ -340,7 +382,10 @@ class KegTargetTemperatureSensor(KegSensor):
     @property
     def state(self):
         """Return the current temperature."""
-        return self.device.target_temp
+        if not self.device.target_temp:
+            return None
+        else:
+            return self.device.target_temp
 
     @property
     def unit_of_measurement(self):
@@ -369,6 +414,29 @@ class KegBeerStyleSensor(KegSensor):
     def state(self):
         """Return the beer style."""
         return self.device.beer_style
+
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
+
+class KegBeerNameSensor(KegSensor):
+    """Sensor for the beer name of the Keg device."""
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Beer Name"
+
+    @property
+    def state(self):
+        """Return the beer name."""
+        return self.device.beer_name if self.device.beer_name else "N/A"
+    
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:beer-outline"
 
     @property
     def identify(self):
@@ -426,6 +494,34 @@ class KegIsUpdatingSensor(KegSensor):
         """Return the icon for the sensor."""
         return "mdi:cloud-sync"
 
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
+
+class KegNeedsCleaningSensor(KegSensor):
+    """Sensor for the cleaning status of the Keg device."""
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Needs Cleaning"
+
+    @property
+    def state(self):
+        """Return the cleaning status."""
+        return "Needs Cleaning" if self.device.needs_acid_cleaning else "Clean"
+
+    @property
+    def entity_category(self):
+        """Return the entity category."""
+        return EntityCategory.DIAGNOSTIC
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:broom"
+    
     @property
     def identify(self):
         """Return the unique ID of the sensor."""
