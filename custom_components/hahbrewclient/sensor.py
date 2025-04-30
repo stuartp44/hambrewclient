@@ -131,17 +131,18 @@ class CraftSensorBrewStageSensor(CraftSensor):
     def native_value(self):
         """Return the current brew stage."""
         device = self._get_latest_device()
-        return device["stage"] if device else None
+        return device.get("stage") if device else None
 
     @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:beer"
-    
+
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device.serial_number}_{self.name}"
+        return f"{self.device_id}_brew_stage"
+
 
 class CraftSensorCurrentTemperatureSensor(CraftSensor):
     """Sensor for the current temperature of the Craft device."""
@@ -155,8 +156,7 @@ class CraftSensorCurrentTemperatureSensor(CraftSensor):
     def native_value(self):
         """Return the current temperature."""
         device = self._get_latest_device()
-        # If available, return the current temperature else mark as unavailable
-        return device["current_temp"] if device else None
+        return device.get("current_temp") if device else None
 
     @property
     def unit_of_measurement(self):
@@ -169,15 +169,16 @@ class CraftSensorCurrentTemperatureSensor(CraftSensor):
         return "mdi:thermometer"
 
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
+    def available(self):
+        """Return True if the sensor has data."""
         device = self._get_latest_device()
-        return device["current_temp"] is not None
+        return device is not None and device.get("current_temp") is not None
 
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device.serial_number}_{self.name}"
+        return f"{self.device_id}_current_temperature"
+
 
 class CraftSensorTargetTemperatureSensor(CraftSensor):
     """Sensor for the target temperature of the Craft device."""
@@ -191,7 +192,7 @@ class CraftSensorTargetTemperatureSensor(CraftSensor):
     def native_value(self):
         """Return the target temperature."""
         device = self._get_latest_device()
-        return device["target_temp"] if device else None
+        return device.get("target_temp") if device else None
 
     @property
     def unit_of_measurement(self):
@@ -202,17 +203,18 @@ class CraftSensorTargetTemperatureSensor(CraftSensor):
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:thermometer"
-    
+
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
+    def available(self):
+        """Return True if the sensor has data."""
         device = self._get_latest_device()
-        return device["target_temp"] is not None
+        return device is not None and device.get("target_temp") is not None
 
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device.serial_number}_{self.name}"
+        return f"{self.device_id}_target_temperature"
+
 
 class CraftSensorOnlineStatusSensor(CraftSensor):
     """Sensor for the online status of the Craft device."""
@@ -237,11 +239,12 @@ class CraftSensorOnlineStatusSensor(CraftSensor):
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:cloud-check"
-    
+
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device.serial_number}_{self.name}"
+        return f"{self.device_id}_online_status"
+
 
 class CraftSensorIsUpdatingSensor(CraftSensor):
     """Sensor for the update status of the Craft device."""
@@ -266,11 +269,12 @@ class CraftSensorIsUpdatingSensor(CraftSensor):
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:cloud-sync"
-    
+
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device.serial_number}_{self.name}"
+        return f"{self.device_id}_is_updating"
+
 
 class CraftSensorCurrentStageSensor(CraftSensor):
     """Sensor for the current stage of the Craft device."""
@@ -282,33 +286,30 @@ class CraftSensorCurrentStageSensor(CraftSensor):
 
     @property
     def native_value(self):
-        """Return the current stage."""
+        """Return the current stage in a human-readable format."""
         device = self._get_latest_device()
         if not device:
             return "Unknown"
 
-        stage = device.get("state")  # or "stage" or whatever the real field name is
+        stage = device.get("state")
 
-        if stage == "brew_clean_idle":
-            return "Clean and Ready to Brew"
-        elif stage == "fermenting":
-            return "Fermenting"
-        elif stage == "serving":
-            return "Serving"
-        elif stage == "brew_acid_clean_idle":
-            return "Clean Required"
-
-        return "Unknown"
+        return {
+            "brew_clean_idle": "Clean and Ready to Brew",
+            "fermenting": "Fermenting",
+            "serving": "Serving",
+            "brew_acid_clean_idle": "Clean Required"
+        }.get(stage, "Unknown")
 
     @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:beer"
-    
+
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device.serial_number}_{self.name}"
+        return f"{self.device_id}_current_stage"
+
 
 class CraftSensorNeedsCleaningSensor(CraftSensor):
     """Sensor for the cleaning status of the Craft device."""
@@ -333,11 +334,11 @@ class CraftSensorNeedsCleaningSensor(CraftSensor):
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:broom"
-    
+
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device.serial_number}_{self.name}"
+        return f"{self.device_id}_needs_cleaning"
 
 class KegSensor(SensorEntity):
     """Base class for Keg sensors."""
