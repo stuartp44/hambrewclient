@@ -1,7 +1,9 @@
 import logging
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from pymbrewclient import BreweryOverview, Device
+from datetime import timedelta
 
 from .const import DOMAIN
 
@@ -12,12 +14,15 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     client = hass.data[DOMAIN][config_entry.entry_id]  # Get the BreweryClient instance
     sensors = []
 
-    # Fetch the brewery overview directly from the client
-    brewery_overview: BreweryOverview = await hass.async_add_executor_job(client.get_brewery_overview)
-    _LOGGER.debug(f"Brewery overview: {brewery_overview}")
+    # Create a DataUpdateCoordinator
+    coordinator = MiniBrewDataUpdateCoordinator(hass, client)
+    await coordinator.async_config_entry_first_refresh()
+
+
+    _LOGGER.debug(f"Brewery overview: {coordinator}")
     
     # Iterate through all states and devices
-    for state, devices in brewery_overview.__dict__.items():  # Access states dynamically
+    for state, devices in coordinator.data.__dict__.items():  # Access states dynamically
         _LOGGER.debug(f"State: {state}, Devices: {devices}")
         for device_data in devices:
             # Convert the raw dictionary to a Device object
@@ -26,6 +31,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             if device.device_type == 0:  # MiniBrew device
                 sensors.append(MiniBrewTemperatureSensor(device, state))
                 sensors.append(MiniBrewOnlineStatusSensor(device, state))
+                sensors.append(MiniBrewIsUpdatingSensor(device, state))
+                sensors.append(MiniBrewBrewStageSensor(device, state))
             # Add sensors for Keg devices
             elif device.device_type == 1:  # Keg device
                 sensors.append(KegCurrentTemperatureSensor(device, state))
@@ -35,6 +42,26 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 sensors.append(KegIsUpdatingSensor(device, state))
 
     async_add_entities(sensors)
+
+class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
+    """Class to manage fetching MiniBrew data from the API."""
+
+    def __init__(self, hass, client):
+        """Initialize the coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="MiniBrew Data Update Coordinator",
+            update_interval=timedelta(seconds=30),  # Fetch data every 30 seconds
+        )
+        self.client = client
+
+    async def _async_update_data(self):
+        """Fetch data from the API."""
+        try:
+            return await self.hass.async_add_executor_job(self.client.get_brewery_overview)
+        except Exception as err:
+            raise UpdateFailed(f"Error fetching data: {err}")
 
 class MiniBrewSensor(SensorEntity):
     """Base class for MiniBrew sensors."""
@@ -55,6 +82,24 @@ class MiniBrewSensor(SensorEntity):
     def unique_id(self):
         """Return a unique ID for the sensor."""
         return f"{self.device.serial_number}_{self.name}"
+    
+    @property
+    def available(self):
+        """Return if the sensor is available."""
+        return self.coordinator.last_update_success
+
+    async def async_update(self):
+        """Update the sensor."""
+        await self.coordinator.async_request_refresh()
+
+    @property
+    def should_poll(self):
+        """Disable polling, updates are handled by the coordinator."""
+        return False
+
+    async def async_added_to_hass(self):
+        """Register callbacks."""
+        self.async_on_remove(self.coordinator.async_add_listener(self.async_write_ha_state))
 
 class MiniBrewBrewStageSensor(MiniBrewSensor):
     """Sensor for the current brew stage of the MiniBrew device."""
@@ -190,6 +235,24 @@ class KegSensor(SensorEntity):
     def unique_id(self):
         """Return a unique ID for the sensor."""
         return f"{self.device.serial_number}_{self.name}"
+    
+    @property
+    def available(self):
+        """Return if the sensor is available."""
+        return self.coordinator.last_update_success
+
+    async def async_update(self):
+        """Update the sensor."""
+        await self.coordinator.async_request_refresh()
+
+    @property
+    def should_poll(self):
+        """Disable polling, updates are handled by the coordinator."""
+        return False
+
+    async def async_added_to_hass(self):
+        """Register callbacks."""
+        self.async_on_remove(self.coordinator.async_add_listener(self.async_write_ha_state))
 
 
 class KegCurrentTemperatureSensor(KegSensor):
