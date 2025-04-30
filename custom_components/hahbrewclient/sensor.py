@@ -199,6 +199,11 @@ class MiniBrewOnlineStatusSensor(MiniBrewSensor):
     def entity_category(self):
         """Return the entity category."""
         return EntityCategory.DIAGNOSTIC
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:cloud-check"
     
     @property
     def identify(self):
@@ -222,6 +227,11 @@ class MiniBrewIsUpdatingSensor(MiniBrewSensor):
     def entity_category(self):
         """Return the entity category."""
         return EntityCategory.DIAGNOSTIC
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:cloud-sync"
     
     @property
     def identify(self):
@@ -382,6 +392,11 @@ class KegOnlineStatusSensor(KegSensor):
     def entity_category(self):
         """Return the entity category."""
         return EntityCategory.DIAGNOSTIC
+   
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:cloud-check"    
     
     @property
     def identify(self):
@@ -405,7 +420,12 @@ class KegIsUpdatingSensor(KegSensor):
     def entity_category(self):
         """Return the entity category."""
         return EntityCategory.DIAGNOSTIC
-    
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:cloud-sync"
+
     @property
     def identify(self):
         """Return the unique ID of the sensor."""
