@@ -113,7 +113,7 @@ class MiniBrewBrewStageSensor(MiniBrewSensor):
     @property
     def state(self):
         """Return the current brew stage."""
-        return self.device.brew_stage
+        return self.device.stage
 
     @property
     def icon(self):
@@ -182,7 +182,7 @@ class MiniBrewIsUpdatingSensor(MiniBrewSensor):
     @property
     def state(self):
         """Return the update status."""
-        return "Updating" if self.device.is_updating else "Not Updating"
+        return "Updating" if self.device.updating else "Not Updating"
 
     @property
     def entity_category(self):
@@ -205,7 +205,7 @@ class MiniBrewCurrentStageSensor(MiniBrewSensor):
     @property
     def state(self):
         """Return the current stage."""
-        return self.device.current_stage
+        return self.device.stage
 
     @property
     def icon(self):
@@ -355,7 +355,7 @@ class KegIsUpdatingSensor(KegSensor):
     @property
     def state(self):
         """Return the update status."""
-        return "Updating" if self.device.is_updating else "Not Updating"
+        return "Updating" if self.device.updating else "Not Updating"
 
     @property
     def entity_category(self):
