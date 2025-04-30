@@ -286,19 +286,20 @@ class CraftSensorCurrentStageSensor(CraftSensor):
 
     @property
     def native_value(self):
-        """Return the current stage in a human-readable format."""
-        device = self._get_latest_device()
-        if not device:
-            return "Unknown"
-
-        stage = device.get("stage")
-
-        return {
+        """Return a human-readable phase name based on the device's group."""
+        phase_map = {
             "brew_clean_idle": "Clean and Ready to Brew",
             "fermenting": "Fermenting",
             "serving": "Serving",
-            "brew_acid_clean_idle": "Clean Required"
-        }.get(stage, "Unknown")
+            "brew_acid_clean_idle": "Cleaning Required"
+        }
+
+        for group_name, devices in self.coordinator.data.__dict__.items():
+            for dev in devices:
+                if dev.get("serial_number") == self.device_id:
+                    return phase_map.get(group_name, group_name)  # fallback to raw name
+
+        return "Unknown"
 
     @property
     def icon(self):
