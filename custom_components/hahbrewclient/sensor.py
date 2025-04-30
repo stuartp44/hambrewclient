@@ -291,7 +291,7 @@ class CraftSensorCurrentStageSensor(CraftSensor):
         if not device:
             return "Unknown"
 
-        stage = device.get("state")
+        stage = device.get("stage")
 
         return {
             "brew_clean_idle": "Clean and Ready to Brew",
