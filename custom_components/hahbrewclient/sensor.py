@@ -32,6 +32,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 sensors.append(KegTargetTemperatureSensor(device, state))
                 sensors.append(KegBeerStyleSensor(device, state))
                 sensors.append(KegOnlineStatusSensor(device, state))
+                sensors.append(KegIsUpdatingSensor(device, state))
 
     async_add_entities(sensors)
 
@@ -124,6 +125,51 @@ class MiniBrewOnlineStatusSensor(MiniBrewSensor):
         """Return the unique ID of the sensor."""
         return f"{self.device.serial_number}_{self.name}"
 
+class MiniBrewIsUpdatingSensor(MiniBrewSensor):
+    """Sensor for the update status of the MiniBrew device."""
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Update Status"
+
+    @property
+    def state(self):
+        """Return the update status."""
+        return "Updating" if self.device.is_updating else "Not Updating"
+
+    @property
+    def entity_category(self):
+        """Return the entity category."""
+        return EntityCategory.DIAGNOSTIC
+    
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
+
+class MiniBrewCurrentStageSensor(MiniBrewSensor):
+    """Sensor for the current stage of the MiniBrew device."""
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Current Stage"
+
+    @property
+    def state(self):
+        """Return the current stage."""
+        return self.device.current_stage
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:beer"
+    
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
 
 class KegSensor(SensorEntity):
     """Base class for Keg sensors."""
@@ -222,6 +268,29 @@ class KegOnlineStatusSensor(KegSensor):
     def state(self):
         """Return the online status."""
         return "Online" if self.device.online else "Offline"
+
+    @property
+    def entity_category(self):
+        """Return the entity category."""
+        return EntityCategory.DIAGNOSTIC
+    
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
+
+class KegIsUpdatingSensor(KegSensor):
+    """Sensor for the update status of the Keg device."""
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Update Status"
+
+    @property
+    def state(self):
+        """Return the update status."""
+        return "Updating" if self.device.is_updating else "Not Updating"
 
     @property
     def entity_category(self):
