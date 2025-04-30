@@ -75,7 +75,7 @@ class CraftSensor(SensorEntity):
         """Initialize the sensor."""
         self.coordinator = coordinator
         self.device = device
-        self._state = state 
+        self._state = state
         self._attr_device_info = {
             "identifiers": {(DOMAIN, device.serial_number)},
             "name": device.title,
@@ -88,7 +88,7 @@ class CraftSensor(SensorEntity):
     def unique_id(self):
         """Return a unique ID for the sensor."""
         return f"{self.device.serial_number}_{self.name}"
-    
+
     @property
     def available(self):
         """Return if the sensor is available."""
@@ -273,6 +273,7 @@ class CraftSensorCurrentStageSensor(CraftSensor):
             return "Serving"
         elif self._state == "brew_acid_clean_idle":
             return "Clean Required"
+        return "Unknown"
 
     @property
     def icon(self):
