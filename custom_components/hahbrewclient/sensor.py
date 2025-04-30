@@ -34,9 +34,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 sensors.append(CraftSensorOnlineStatusSensor(coordinator, device, state))
                 sensors.append(CraftSensorIsUpdatingSensor(coordinator, device, state))
                 sensors.append(CraftSensorBrewStageSensor(coordinator, device, state))
+                sensors.append(CraftSensorTimeInStageSensor(coordinator, device, state))
                 sensors.append(CraftSensorCurrentStageSensor(coordinator, device, state))
                 sensors.append(CraftSensorNeedsCleaningSensor(coordinator, device, state))
-                sensors.append(CraftSensorTimeInStageSensor(coordinator, device, state))
             # Add sensors for Keg devices
             elif device.device_type == 1:  # Keg device
                 sensors.append(KegCurrentTemperatureSensor(coordinator, device, state))
@@ -275,6 +275,51 @@ class CraftSensorIsUpdatingSensor(CraftSensor):
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_is_updating"
+
+class CraftUserActionRequiredSensor(CraftSensor):
+    """Sensor for user action required status of the Craft device."""
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "User Action Required"
+
+    @property
+    def native_value(self):
+        """Return the user action required status."""
+        device = self._get_latest_device()
+        if not device:
+            return "Unknown"
+
+        action = device.get("user_action")
+
+        if action == 2:
+            return "Action Required"
+        elif action == 0:
+            return "No Action Required"
+        return "Unknown"
+
+
+    @property
+    def entity_category(self):
+        """Return the entity category."""
+        return EntityCategory.DIAGNOSTIC
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        device = self._get_latest_device()
+        action = device.get("user_action") if device else None
+        
+        if action == 2:
+            return "mdi:alert"
+        else:
+            return "mdi:check-circle"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_user_action_required"
 
 
 class CraftSensorCurrentStageSensor(CraftSensor):
