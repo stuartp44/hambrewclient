@@ -136,7 +136,7 @@ class CraftSensorBrewStageSensor(CraftSensor):
     @property
     def icon(self):
         """Return the icon for the sensor."""
-        return "mdi:beer"
+        return "mdi:routes-clock"
 
     @property
     def unique_id(self):
@@ -291,7 +291,7 @@ class CraftSensorCurrentStageSensor(CraftSensor):
             "brew_clean_idle": "Clean and Ready to Brew",
             "fermenting": "Fermenting",
             "serving": "Serving",
-            "brew_acid_clean_idle": "Cleaning Required"
+            "brew_acid_clean_idle": "Ready to Clean"
         }
 
         for group_name, devices in self.coordinator.data.__dict__.items():
