@@ -142,10 +142,7 @@ class CraftSensorCurrentTemperatureSensor(CraftSensor):
     def state(self):
         """Return the current temperature."""
         # If available, return the current temperature else mark as unavailable
-        if not self.device.current_temp:
-            return None
-        else:
-            return self.device.current_temp
+        return self.device.current_temp
 
     @property
     def unit_of_measurement(self):
@@ -156,6 +153,11 @@ class CraftSensorCurrentTemperatureSensor(CraftSensor):
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:thermometer"
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.device.current_temp is not None
 
     @property
     def identify(self):
@@ -174,10 +176,7 @@ class CraftSensorTargetTemperatureSensor(CraftSensor):
     def state(self):
         """Return the target temperature."""
         # If available, return the target temperature else mark as unavailable
-        if not self.device.target_temp:
-            return None
-        else:
-            return self.device.target_temp
+        return self.device.target_temp
 
     @property
     def unit_of_measurement(self):
@@ -189,6 +188,11 @@ class CraftSensorTargetTemperatureSensor(CraftSensor):
         """Return the icon for the sensor."""
         return "mdi:thermometer"
     
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.device.target_temp is not None
+
     @property
     def identify(self):
         """Return the unique ID of the sensor."""
