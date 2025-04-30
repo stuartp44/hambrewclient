@@ -15,7 +15,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     sensors = []
 
     # Create a DataUpdateCoordinator
-    coordinator = MiniBrewDataUpdateCoordinator(hass, client)
+    coordinator = MiniBrewDataUpdateCoordinator(hass, client, config_entry)
     await coordinator.async_config_entry_first_refresh()
 
 
@@ -53,13 +53,16 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching MiniBrew data from the API."""
 
-    def __init__(self, hass, client):
+    def __init__(self, hass, client, config_entry):
         """Initialize the coordinator."""
+        self.client = client
+        self.config_entry = config_entry
+        refresh_interval = config_entry.options.get("refresh_interval", 60)
         super().__init__(
             hass,
             _LOGGER,
             name="MiniBrew Data Update Coordinator",
-            update_interval=timedelta(seconds=30),  # Fetch data every 30 seconds
+            update_interval=timedelta(seconds=refresh_interval),  # Fetch data every 30 seconds
         )
         self.client = client
 
