@@ -351,10 +351,7 @@ class KegCurrentTemperatureSensor(KegSensor):
     @property
     def state(self):
         """Return the current temperature."""
-        if not self.device.current_temp:
-            return None
-        else:
-            return self.device.current_temp
+        return self.device.current_temp
 
     @property
     def unit_of_measurement(self):
@@ -365,6 +362,11 @@ class KegCurrentTemperatureSensor(KegSensor):
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:thermometer"
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.device.current_temp is not None
 
     @property
     def identify(self):
@@ -382,10 +384,7 @@ class KegTargetTemperatureSensor(KegSensor):
     @property
     def state(self):
         """Return the current temperature."""
-        if not self.device.target_temp:
-            return None
-        else:
-            return self.device.target_temp
+        return self.device.target_temp
 
     @property
     def unit_of_measurement(self):
@@ -396,6 +395,11 @@ class KegTargetTemperatureSensor(KegSensor):
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:thermometer"
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.device.target_temp is not None
 
     @property
     def identify(self):
