@@ -66,8 +66,9 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
 class MiniBrewSensor(SensorEntity):
     """Base class for MiniBrew sensors."""
 
-    def __init__(self, device: Device, state: str):
+    def __init__(self, coordinator, device: Device, state: str):
         """Initialize the sensor."""
+        self.coordinator = coordinator
         self.device = device
         self._state = state 
         self._attr_device_info = {
@@ -219,8 +220,9 @@ class MiniBrewCurrentStageSensor(MiniBrewSensor):
 class KegSensor(SensorEntity):
     """Base class for Keg sensors."""
 
-    def __init__(self, device: Device, state: str):
+    def __init__(self, coordinator, device: Device, state: str):
         """Initialize the sensor."""
+        self.coordinator = coordinator
         self.device = device
         self._state = state
         self._attr_device_info = {
