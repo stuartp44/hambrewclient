@@ -64,8 +64,12 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from the API."""
         try:
-            return await self.hass.async_add_executor_job(self.client.get_brewery_overview)
+            _LOGGER.debug("Fetching data from MiniBrew API...")
+            data = await self.hass.async_add_executor_job(self.client.get_brewery_overview)
+            _LOGGER.debug(f"Fetched data: {data}")
+            return data
         except Exception as err:
+            _LOGGER.error(f"Error fetching data: {err}")
             raise UpdateFailed(f"Error fetching data: {err}")
 
 class CraftSensor(SensorEntity):
