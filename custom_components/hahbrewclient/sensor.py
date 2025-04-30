@@ -36,6 +36,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 sensors.append(CraftSensorBrewStageSensor(coordinator, device, state))
                 sensors.append(CraftSensorCurrentStageSensor(coordinator, device, state))
                 sensors.append(CraftSensorNeedsCleaningSensor(coordinator, device, state))
+                sensors.append(CraftSensorTimeInStageSensor(coordinator, device, state))
             # Add sensors for Keg devices
             elif device.device_type == 1:  # Keg device
                 sensors.append(KegCurrentTemperatureSensor(coordinator, device, state))
