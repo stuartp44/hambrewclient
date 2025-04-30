@@ -76,3 +76,24 @@ class PymbrewClientConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         return PymbrewClientOptionsFlowHandler(config_entry)  # Implement options flow if needed
+
+class PymbrewClientOptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options flow for PymbrewClient."""
+
+    def __init__(self, config_entry):
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        # Default value from existing options or fallback to 60
+        options_schema = vol.Schema({
+            vol.Optional("refresh_interval", default=self.config_entry.options.get("refresh_interval", 60)): int,
+        })
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=options_schema,
+        )
