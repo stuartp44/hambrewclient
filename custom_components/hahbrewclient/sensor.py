@@ -29,7 +29,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             device = Device(**device_data)
             # Add sensors for MiniBrew devices
             if device.device_type == 0:  # MiniBrew device
-                sensors.append(MiniBrewTemperatureSensor(coordinator, device,  state))
+                sensors.append(MiniBrewCurrentTemperatureSensor(coordinator, device,  state))
+                sensors.append(MiniBrewTargetTemperatureSensor(coordinator, device, state))
                 sensors.append(MiniBrewOnlineStatusSensor(coordinator, device, state))
                 sensors.append(MiniBrewIsUpdatingSensor(coordinator, device, state))
                 sensors.append(MiniBrewBrewStageSensor(coordinator, device, state))
@@ -125,7 +126,7 @@ class MiniBrewBrewStageSensor(MiniBrewSensor):
         """Return the unique ID of the sensor."""
         return f"{self.device.serial_number}_{self.name}"
 
-class MiniBrewTemperatureSensor(MiniBrewSensor):
+class MiniBrewCurrentTemperatureSensor(MiniBrewSensor):
     """Sensor for the current temperature of the MiniBrew device."""
 
     @property
@@ -137,6 +138,29 @@ class MiniBrewTemperatureSensor(MiniBrewSensor):
     def state(self):
         """Return the current temperature."""
         return self.device.current_temp
+
+    @property
+    def unit_of_measurement(self):
+        """Return the unit of measurement."""
+        return "°C"
+    
+    @property
+    def identify(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device.serial_number}_{self.name}"
+
+class MiniBrewTargetTemperatureSensor(MiniBrewSensor):
+    """Sensor for the target temperature of the MiniBrew device."""
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Target Temperature"
+
+    @property
+    def state(self):
+        """Return the target temperature."""
+        return self.device.target_temp
 
     @property
     def unit_of_measurement(self):
