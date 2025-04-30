@@ -378,6 +378,12 @@ class CraftSensorTimeInStageSensor(CraftSensor):
         return "seconds"
 
     @property
+    def available(self):
+        """Return True if the sensor has data."""
+        device = self._get_latest_device()
+        return device is not None and device.get("status_time") is not None
+
+    @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:clock"
