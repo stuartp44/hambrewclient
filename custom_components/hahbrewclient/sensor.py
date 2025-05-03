@@ -13,6 +13,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up MiniBrew sensors from a config entry."""
     client = hass.data[DOMAIN][config_entry.entry_id]  # Get the BreweryClient instance
     sensors = []
+    added_devices = set()
 
     # Create a DataUpdateCoordinator
     coordinator = MiniBrewDataUpdateCoordinator(hass, client, config_entry)
@@ -21,34 +22,50 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     _LOGGER.debug(f"Brewery overview: {coordinator}")
     
-    # Iterate through all states and devices
-    for state, devices in coordinator.data.__dict__.items():  # Access states dynamically
-        _LOGGER.debug(f"State: {state}, Devices: {devices}")
-        for device_data in devices:
-            # Convert the raw dictionary to a Device object
-            device = Device(**device_data)
-            # Add sensors for MiniBrew devices
-            if device.device_type == 0:  # Craft device
-                sensors.append(CraftSensorCurrentTemperatureSensor(coordinator, device,  state))
-                sensors.append(CraftSensorTargetTemperatureSensor(coordinator, device, state))
-                sensors.append(CraftSensorOnlineStatusSensor(coordinator, device, state))
-                sensors.append(CraftSensorIsUpdatingSensor(coordinator, device, state))
-                sensors.append(CraftSensorBrewStageSensor(coordinator, device, state))
-                sensors.append(CraftSensorTimeInStageSensor(coordinator, device, state))
-                sensors.append(CraftSensorCurrentStageSensor(coordinator, device, state))
-                sensors.append(CraftSensorNeedsCleaningSensor(coordinator, device, state))
-                sensors.append(CraftUserActionRequiredSensor(coordinator, device, state))
-            # Add sensors for Keg devices
-            elif device.device_type == 1:  # Keg device
-                sensors.append(KegCurrentTemperatureSensor(coordinator, device, state))
-                sensors.append(KegTargetTemperatureSensor(coordinator, device, state))
-                sensors.append(KegBeerStyleSensor(coordinator, device, state))
-                sensors.append(KegOnlineStatusSensor(coordinator,device, state))
-                sensors.append(KegIsUpdatingSensor(coordinator, device, state))
-                sensors.append(KegNeedsCleaningSensor(coordinator, device, state))
-                
+    # Function to add new sensors dynamically
+    def add_new_sensors():
+        for state, devices in coordinator.data.__dict__.items():  # Access states dynamically
+            for device_data in devices:
+                # Check if the device has already been added
+                if device_data["serial_number"] in added_devices:
+                    continue
 
+                # Convert the raw dictionary to a Device object
+                device = Device(**device_data)
+
+                # Add sensors for MiniBrew devices
+                if device.device_type == 0:  # Craft device
+                    sensors.append(CraftSensorCurrentTemperatureSensor(coordinator, device, state))
+                    sensors.append(CraftSensorTargetTemperatureSensor(coordinator, device, state))
+                    sensors.append(CraftSensorOnlineStatusSensor(coordinator, device, state))
+                    sensors.append(CraftSensorIsUpdatingSensor(coordinator, device, state))
+                    sensors.append(CraftSensorBrewStageSensor(coordinator, device, state))
+                    sensors.append(CraftSensorTimeInStageSensor(coordinator, device, state))
+                    sensors.append(CraftSensorCurrentStageSensor(coordinator, device, state))
+                    sensors.append(CraftSensorNeedsCleaningSensor(coordinator, device, state))
+                    sensors.append(CraftUserActionRequiredSensor(coordinator, device, state))
+                # Add sensors for Keg devices
+                elif device.device_type == 1:  # Keg device
+                    sensors.append(KegCurrentTemperatureSensor(coordinator, device, state))
+                    sensors.append(KegTargetTemperatureSensor(coordinator, device, state))
+                    sensors.append(KegBeerStyleSensor(coordinator, device, state))
+                    sensors.append(KegOnlineStatusSensor(coordinator, device, state))
+                    sensors.append(KegIsUpdatingSensor(coordinator, device, state))
+                    sensors.append(KegNeedsCleaningSensor(coordinator, device, state))
+
+                # Mark the device as added
+                added_devices.add(device_data["serial_number"])
+
+    # Add initial sensors
+    add_new_sensors()
     async_add_entities(sensors)
+
+    # Listen for updates from the coordinator and add new sensors dynamically
+    async def handle_coordinator_update():
+        add_new_sensors()
+        async_add_entities(sensors)
+
+    coordinator.async_add_listener(handle_coordinator_update)
 
 class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching MiniBrew data from the API."""
