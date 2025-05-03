@@ -297,7 +297,7 @@ class CraftUserActionRequiredSensor(CraftSensor):
 
         action = device.get("user_action")
 
-        if action == 2:
+        if action != 0 and action is not None:
             return "Action Required"
         elif action == 0:
             return "No Action Required"
@@ -315,7 +315,7 @@ class CraftUserActionRequiredSensor(CraftSensor):
         device = self._get_latest_device()
         action = device.get("user_action") if device else None
         
-        if action == 2:
+        if action != 0 and action is not None:
             return "mdi:alert"
         else:
             return "mdi:check-circle"
