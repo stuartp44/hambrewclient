@@ -522,7 +522,7 @@ class KegCurrentTemperatureSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id.serial_number}_{self.name}"
+        return f"{self.device_id}_{self.name}"
 
 class KegTargetTemperatureSensor(KegSensor):
     """Sensor for the target temperature of the Keg device."""
@@ -557,7 +557,7 @@ class KegTargetTemperatureSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id.serial_number}_{self.name}"
+        return f"{self.device_id}_{self.name}"
 
 class KegBeerStyleSensor(KegSensor):
     """Sensor for the beer style of the Keg device."""
@@ -576,7 +576,7 @@ class KegBeerStyleSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id.serial_number}_{self.name}"
+        return f"{self.device_id}_{self.name}"
 
 
 class KegBeerNameSensor(KegSensor):
@@ -601,7 +601,7 @@ class KegBeerNameSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device.serial_number}_{self.name}"
+        return f"{self.device_id}_{self.name}"
 
 
 class KegOnlineStatusSensor(KegSensor):
@@ -661,7 +661,7 @@ class KegIsUpdatingSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id.serial_number}_{self.name}"
+        return f"{self.device_id}_{self.name}"
 
 
 class KegNeedsCleaningSensor(KegSensor):
@@ -691,4 +691,4 @@ class KegNeedsCleaningSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id.serial_number}_{self.name}"
+        return f"{self.device_id}_{self.name}"
