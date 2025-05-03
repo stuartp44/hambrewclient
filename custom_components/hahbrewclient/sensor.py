@@ -52,7 +52,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     sensors.append(KegOnlineStatusSensor(coordinator, device, state))
                     sensors.append(KegIsUpdatingSensor(coordinator, device, state))
                     sensors.append(KegNeedsCleaningSensor(coordinator, device, state))
-
+                    sensors.append(KegActionRequiredSensor(coordinator, device, state))
                 # Mark the device as added
                 added_devices.add(device_data["serial_number"])
 
@@ -687,6 +687,51 @@ class KegNeedsCleaningSensor(KegSensor):
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:broom"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_{self.name}"
+
+class KegActionRequiredSensor(KegSensor):
+    """Sensor for user action required status of the Keg device."""
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "User Action Required"
+
+    @property
+    def native_value(self):
+        """Return the user action required status."""
+        device = self._get_latest_device()
+        if not device:
+            return "Unknown"
+
+        action = device.get("user_action")
+
+        if action != 0 and action is not None:
+            return "Action Required"
+        elif action == 0:
+            return "No Action Required"
+        return "Unknown"
+
+
+    @property
+    def entity_category(self):
+        """Return the entity category (diagnostic)."""
+        return EntityCategory.DIAGNOSTIC
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        device = self._get_latest_device()
+        action = device.get("user_action") if device else None
+        
+        if action != 0 and action is not None:
+            return "mdi:alert"
+        else:
+            return "mdi:check-circle"
 
     @property
     def unique_id(self):
