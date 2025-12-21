@@ -1,0 +1,140 @@
+name: Draft Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.2.3 or preview-1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'v*-preview*'
+      - 'v*-beta*'
+      - 'v*-alpha*'
+      - 'v*-rc*'
+
+permissions:
+  contents: write
+
+jobs:
+  draft-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            IS_PRERELEASE="${{ inputs.prerelease }}"
+          else
+            # Extract version from tag
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            # Check if it's a prerelease based on tag pattern
+            if [[ "$VERSION" =~ (preview|beta|alpha|rc) ]]; then
+              IS_PRERELEASE="true"
+            else
+              IS_PRERELEASE="false"
+            fi
+          fi
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "is_prerelease=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+          echo "Pre-release: ${IS_PRERELEASE}"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          if [ -z "$PREVIOUS_TAG" ]; then
+            # First release, get all commits
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            # Get commits since previous tag
+            COMMITS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+          
+          # Group commits by type
+          FEATURES=$(echo "$COMMITS" | grep "^- feat" || echo "")
+          FIXES=$(echo "$COMMITS" | grep "^- fix" || echo "")
+          BREAKING=$(echo "$COMMITS" | grep "BREAKING CHANGE" || echo "")
+          OTHERS=$(echo "$COMMITS" | grep -v "^- feat" | grep -v "^- fix" | grep -v "BREAKING CHANGE" || echo "")
+          
+          # Build changelog
+          CHANGELOG="## What's Changed"
+          CHANGELOG="${CHANGELOG}\n"
+          
+          if [ -n "$BREAKING" ]; then
+            CHANGELOG="${CHANGELOG}\n### Breaking Changes\n${BREAKING}\n"
+          fi
+          
+          if [ -n "$FEATURES" ]; then
+            CHANGELOG="${CHANGELOG}\n### Features\n${FEATURES}\n"
+          fi
+          
+          if [ -n "$FIXES" ]; then
+            CHANGELOG="${CHANGELOG}\n### Bug Fixes\n${FIXES}\n"
+          fi
+          
+          if [ -n "$OTHERS" ]; then
+            CHANGELOG="${CHANGELOG}\n### Other Changes\n${OTHERS}\n"
+          fi
+          
+          # Save to file
+          echo -e "$CHANGELOG" > changelog.md
+          cat changelog.md
+
+      - name: Update manifest version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          python -c "
+          import json
+          with open('custom_components/minibrew/manifest.json', 'r+') as f:
+              data = json.load(f)
+              data['version'] = '${VERSION}'
+              f.seek(0)
+              json.dump(data, f, indent=2)
+              f.truncate()
+          "
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          body_path: changelog.md
+          draft: true
+          prerelease: ${{ steps.version.outputs.is_prerelease }}
+          files: |
+            custom_components/minibrew/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## Draft Release Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Pre-release:** ${{ steps.version.outputs.is_prerelease }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "INFO: The release is in **draft** mode." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Go to [Releases](https://github.com/${{ github.repository }}/releases)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Review the draft release" >> $GITHUB_STEP_SUMMARY
+          echo "3. Edit if needed" >> $GITHUB_STEP_SUMMARY
+          echo "4. Click **Publish release** when ready" >> $GITHUB_STEP_SUMMARY

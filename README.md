@@ -2,6 +2,8 @@
 
 A Home Assistant custom component for integrating MiniBrew Craft and Keg devices into your smart home.
 
+**DISCLAIMER:** This is an unofficial, community-developed integration. It is not affiliated with, endorsed by, officially maintained by, or in any way officially connected to MiniBrew B.V. or any of its subsidiaries or affiliates. The official MiniBrew website can be found at https://minibrew.io. The names "MiniBrew" and related names, marks, emblems and images are registered trademarks of their respective owners.
+
 ## Overview
 
 This integration allows you to monitor and control your MiniBrew brewing devices through Home Assistant. It supports both MiniBrew Craft (brewing devices) and MiniBrew Keg (dispensing devices), providing real-time monitoring of temperatures, brew stages, and device status.
@@ -162,7 +164,13 @@ For issues, questions, or feature requests, please open an issue on [GitHub](htt
 
 ## Disclaimer
 
-This is an unofficial integration and is not affiliated with, endorsed by, or connected to MiniBrew in any way.
+This integration is an independent, community-driven project developed and maintained by volunteers. It is not affiliated with, endorsed by, officially maintained by, or in any way officially connected to MiniBrew B.V. or any of its subsidiaries or affiliates.
+
+- This software is provided "as is" without warranty of any kind
+- Use at your own risk
+- The developers are not responsible for any damage to your MiniBrew devices
+- MiniBrew® is a registered trademark of MiniBrew B.V.
+- For official MiniBrew support, please visit https://minibrew.io
 
 ## Credits
 

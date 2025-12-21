@@ -32,5 +32,5 @@ if ! echo "$commit_msg" | grep -qE "$conventional_commit_regex"; then
     exit 1
 fi
 
-echo "Commit message follows Conventional Commits format"
+echo "OK: Commit message follows Conventional Commits format"
 exit 0

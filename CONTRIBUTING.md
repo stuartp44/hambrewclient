@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing to this project! This document provides guidelines and instructions for contributing.
 
+**DISCLAIMER:** This is an unofficial, community-developed integration not affiliated with MiniBrew B.V. All contributions are made to an independent open-source project.
+
 ## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
@@ -78,11 +80,11 @@ perf(coordinator): reduce API polling frequency
 
 #### Bad commit messages:
 ```
-❌ Update stuff
-❌ Fixed bug
-❌ Added new feature
-❌ WIP
-❌ asdf
+[BAD] Update stuff
+[BAD] Fixed bug
+[BAD] Added new feature
+[BAD] WIP
+[BAD] asdf
 ```
 
 ### Breaking Changes
@@ -108,9 +110,9 @@ Users need to generate API tokens from MiniBrew website.
 
 Your PR will be automatically checked for:
 
-- ✅ Conventional Commits format in all commits
-- ✅ PR title follows Conventional Commits format
-- ✅ Code quality and linting (if configured)
+- Conventional Commits format in all commits
+- PR title follows Conventional Commits format
+- Code quality and linting (if configured)
 
 **PRs that don't pass these checks will not be merged.**
 
@@ -167,4 +169,4 @@ This project uses **semantic versioning** and automated releases:
 
 Feel free to open an issue for any questions or concerns.
 
-Thank you for contributing! 🍺
+Thank you for contributing!

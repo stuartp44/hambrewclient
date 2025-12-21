@@ -48,6 +48,14 @@
 
 <!-- If yes, describe them here -->
 
+## Preview Release
+
+To create a preview release for testing:
+- Add the `preview-release` label to this PR, **OR**
+- Comment `/preview-release` on this PR
+
+A draft release will be automatically created that you can share for testing.
+
 ## Related Issues
 <!-- Link any related issues using #issue_number -->
 
