@@ -1,7 +1,7 @@
 {
   "domain": "minibrew",
   "name": "Minibrew",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "documentation": "https://github.com/stuartp44/hambrewclient",
   "dependencies": [],
   "codeowners": [
