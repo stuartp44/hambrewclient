@@ -4,25 +4,36 @@ on:
   push:
     branches:
       - main
+  workflow_run:
+    workflows: ["Validate", "Validate Commits"]
+    types:
+      - completed
+    branches:
+      - main
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  validate:
+  check-validations:
     runs-on: ubuntu-latest
-    name: Wait for validations to pass
-    
+    if: github.event_name == 'workflow_run'
+    outputs:
+      status: ${{ steps.check.outputs.status }}
     steps:
-      - name: Wait for required checks
-        uses: lewagon/wait-on-check-action@v1.3.4
-        with:
-          ref: ${{ github.sha }}
-          check-regexp: '(Validate HACS|Validate with hassfest|Validate manifest.json|Validate Commits)'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-          allowed-conclusions: success,skipped
+      - name: Check validation status
+        id: check
+        run: |
+          if [[ "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
+           [check-validations]
+    if: |
+      always() &&
+      (needs.check-validations.result == 'success' || needs.check-validations.result == 'skipped')tatus=success" >> $GITHUB_OUTPUT
+          else
+            echo "Validation failed"
+            exit 1
+          fi
 
   release:
     runs-on: ubuntu-latest
