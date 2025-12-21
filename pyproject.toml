@@ -1,9 +1,10 @@
 [tool.semantic_release]
 version_toml = ["pyproject.toml:tool.semantic_release.version"]
 version_variables = []
+version = "0.4.0"
 build_command = ""
 commit_message = "chore(release): {version}"
-commit_parser = "angular"
+commit_parser = "conventional"
 tag_format = "v{version}"
 major_on_zero = true
 allow_zero_version = true
@@ -13,8 +14,10 @@ match = "main"
 prerelease = false
 
 [tool.semantic_release.changelog]
-changelog_file = "CHANGELOG.md"
 exclude_commit_patterns = []
+
+[tool.semantic_release.changelog.default_templates]
+changelog_file = "CHANGELOG.md"
 template_dir = ".github/release_templates"
 
 [tool.semantic_release.changelog.environment]
