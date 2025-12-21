@@ -48,13 +48,13 @@ jobs:
           VERSION=$(git describe --tags --abbrev=0 | sed 's/^v//')
           python -c "
           import json
-          with open('custom_components/hahbrewclient/manifest.json', 'r+') as f:
+          with open('custom_components/minibrew/manifest.json', 'r+') as f:
               data = json.load(f)
               data['version'] = '${VERSION}'
               f.seek(0)
               json.dump(data, f, indent=2)
               f.truncate()
           "
-          git add custom_components/hahbrewclient/manifest.json
+          git add custom_components/minibrew/manifest.json
           git commit -m "chore: update manifest version to ${VERSION}" || echo "No changes to commit"
           git push origin main || echo "No changes to push"
