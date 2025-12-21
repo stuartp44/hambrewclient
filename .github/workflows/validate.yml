@@ -50,7 +50,7 @@ jobs:
           import json
           import sys
           
-          with open('custom_components/hahbrewclient/manifest.json', 'r') as f:
+          with open('custom_components/minibrew/manifest.json', 'r') as f:
               manifest = json.load(f)
           
           required_fields = ['domain', 'name', 'version', 'documentation', 'codeowners', 'requirements']
