@@ -176,3 +176,4 @@ This integration is an independent, community-driven project developed and maint
 
 - Developed by [@stuartp44](https://github.com/stuartp44)
 - Built for the Home Assistant community
+- Development infrastructure and automation assisted by GitHub Copilot

@@ -15,6 +15,10 @@ prerelease = false
 [tool.semantic_release.changelog]
 changelog_file = "CHANGELOG.md"
 exclude_commit_patterns = []
+template_dir = ".github/release_templates"
+
+[tool.semantic_release.changelog.environment]
+keep_trailing_newline = true
 
 [tool.semantic_release.commit_parser_options]
 allowed_tags = [

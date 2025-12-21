@@ -1,0 +1,46 @@
+{% if version.released %}
+## [{{ version.tag }}](https://github.com/stuartp44/hambrewclient/releases/tag/{{ version.tag }}) ({{ version.commit_date }})
+
+{% if version.elements.breaking %}
+### Breaking Changes
+
+{% for commit in version.elements.breaking %}
+- {{ commit.descriptions[0] }} ([{{ commit.short_hash }}](https://github.com/stuartp44/hambrewclient/commit/{{ commit.hexsha }}))
+{% endfor %}
+{% endif %}
+
+{% if version.elements.feature %}
+### Features
+
+{% for commit in version.elements.feature %}
+- {{ commit.descriptions[0] }} ([{{ commit.short_hash }}](https://github.com/stuartp44/hambrewclient/commit/{{ commit.hexsha }}))
+{% endfor %}
+{% endif %}
+
+{% if version.elements.fix %}
+### Bug Fixes
+
+{% for commit in version.elements.fix %}
+- {{ commit.descriptions[0] }} ([{{ commit.short_hash }}](https://github.com/stuartp44/hambrewclient/commit/{{ commit.hexsha }}))
+{% endfor %}
+{% endif %}
+
+{% if version.elements.other %}
+### Other Changes
+
+{% for commit in version.elements.other %}
+- {{ commit.descriptions[0] }} ([{{ commit.short_hash }}](https://github.com/stuartp44/hambrewclient/commit/{{ commit.hexsha }}))
+{% endfor %}
+{% endif %}
+
+### Contributors
+
+Thank you to all the contributors who made this release possible:
+
+{% for commit in version.elements.commits | unique(attribute='author') | sort(attribute='author') %}
+- {{ commit.author }}
+{% endfor %}
+
+---
+
+{% endif %}

@@ -94,6 +94,20 @@ jobs:
             CHANGELOG="${CHANGELOG}\n### Other Changes\n${OTHERS}\n"
           fi
           
+          # Get list of contributors for this release
+          if [ -z "$PREVIOUS_TAG" ]; then
+            CONTRIBUTORS=$(git log --pretty=format:"%an" --no-merges | sort -u)
+          else
+            CONTRIBUTORS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"%an" --no-merges | sort -u)
+          fi
+          
+          # Add contributors section
+          CHANGELOG="${CHANGELOG}\n## Contributors\n\n"
+          CHANGELOG="${CHANGELOG}Thank you to all the contributors who made this release possible:\n\n"
+          while IFS= read -r contributor; do
+            CHANGELOG="${CHANGELOG}- @${contributor}\n"
+          done <<< "$CONTRIBUTORS"
+          
           # Save to file
           echo -e "$CHANGELOG" > changelog.md
           cat changelog.md

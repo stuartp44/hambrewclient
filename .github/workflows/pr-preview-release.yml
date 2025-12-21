@@ -98,6 +98,9 @@ jobs:
           # Get commits in this PR
           git log origin/main..HEAD --pretty=format:"- %s (%h)" --no-merges > commits.txt
           
+          # Get contributors in this PR
+          CONTRIBUTORS=$(git log origin/main..HEAD --pretty=format:"%an" --no-merges | sort -u)
+          
           # Build changelog
           cat > changelog.md << EOF
           ## Preview Release from PR #${PR_NUMBER}
@@ -108,6 +111,10 @@ jobs:
           ### Changes in this Preview
           
           $(cat commits.txt)
+          
+          ### Contributors
+          
+          $(echo "$CONTRIBUTORS" | while read -r contributor; do echo "- $contributor"; done)
           
           ---
           
