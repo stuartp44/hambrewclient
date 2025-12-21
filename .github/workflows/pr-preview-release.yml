@@ -141,7 +141,7 @@ jobs:
 
       - name: Create draft release
         id: create_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: Preview ${{ steps.version.outputs.version }} (PR #${{ steps.pr.outputs.number }})
