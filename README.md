@@ -48,7 +48,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 
 ### Manual Installation
 
-1. Copy the `custom_components/hahbrewclient` directory to your Home Assistant's `custom_components` directory
+1. Copy the `custom_components/minibrew` directory to your Home Assistant's `custom_components` directory
 2. If the `custom_components` directory doesn't exist, create it in the same directory as your `configuration.yaml`
 3. Restart Home Assistant
 
