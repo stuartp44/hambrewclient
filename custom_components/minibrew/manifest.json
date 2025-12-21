@@ -1,13 +1,13 @@
 {
     "domain": "minibrew",
     "name": "Minibrew",
-    "version": "1.0.0",
-    "documentation": "https://github.com/stuartp44/hambrewclient",
-    "dependencies": [],
     "codeowners": ["@stuartp44"],
+    "config_flow": true,
+    "dependencies": [],
+    "documentation": "https://github.com/stuartp44/hambrewclient",
     "integration_type": "device",
-    "requirements": ["pymbrewclient>=1.0.10"],
     "iot_class": "cloud_polling",
-    "config_flow": true
+    "requirements": ["pymbrewclient>=1.0.10"],
+    "version": "1.0.0"
   }
   

@@ -1,11 +1,14 @@
 import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
+import homeassistant.helpers.config_validation as cv
 from .const import DOMAIN
 from pymbrewclient import BreweryClient
 
 
 _LOGGER = logging.getLogger(__name__)
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the Minibrew integration."""
