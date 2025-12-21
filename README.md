@@ -78,7 +78,7 @@ To access options:
 - Home Assistant 2023.1 or newer
 - MiniBrew account with registered devices
 - **MiniBrew Pro subscription** (required for API access)
-- `pymbrewclient>=1.0.10` (automatically installed)
+- [`pymbrewclient>=1.0.10`](https://github.com/stuartp44/pymbrewclient) (automatically installed)
 
 ## Dependencies
 
