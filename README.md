@@ -114,7 +114,43 @@ logger:
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! This project uses **Conventional Commits** and automated semantic versioning.
+
+### Commit Message Format
+
+All commits **MUST** follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+
+```
+<type>(<scope>): <subject>
+```
+
+**Types:**
+- `feat`: New feature (triggers minor version bump)
+- `fix`: Bug fix (triggers patch version bump)
+- `docs`: Documentation changes
+- `style`: Code style changes
+- `refactor`: Code refactoring
+- `perf`: Performance improvements (triggers patch version bump)
+- `test`: Test changes
+- `build`: Build system changes
+- `ci`: CI/CD changes
+- `chore`: Other changes
+
+**Examples:**
+```bash
+feat(sensor): add battery level sensor
+fix(config-flow): correct validation error
+docs: update installation instructions
+```
+
+### Automated Releases
+
+- Versions are automatically generated from commit messages
+- Releases are created automatically on merge to `main`
+- Changelog is auto-generated from commits
+- Tags follow semantic versioning (v1.0.0, v1.1.0, etc.)
+
+**Please read [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.**
 
 ## License
 

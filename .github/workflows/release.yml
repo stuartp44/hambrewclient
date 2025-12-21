@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install python-semantic-release
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Semantic Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          semantic-release version
+          semantic-release publish
+
+      - name: Update manifest.json version
+        if: success()
+        run: |
+          VERSION=$(git describe --tags --abbrev=0 | sed 's/^v//')
+          python -c "
+          import json
+          with open('custom_components/hahbrewclient/manifest.json', 'r+') as f:
+              data = json.load(f)
+              data['version'] = '${VERSION}'
+              f.seek(0)
+              json.dump(data, f, indent=2)
+              f.truncate()
+          "
+          git add custom_components/hahbrewclient/manifest.json
+          git commit -m "chore: update manifest version to ${VERSION}" || echo "No changes to commit"
+          git push origin main || echo "No changes to push"

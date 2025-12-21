@@ -1,0 +1,36 @@
+#!/bin/sh
+# Git hook to validate commit messages locally
+# 
+# To install this hook:
+#   ln -s ../../scripts/commit-msg .git/hooks/commit-msg
+#   chmod +x .git/hooks/commit-msg
+
+commit_msg_file=$1
+commit_msg=$(cat "$commit_msg_file")
+
+# Regular expression for Conventional Commits
+conventional_commit_regex='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .{1,100}'
+
+# Check if commit message matches the pattern
+if ! echo "$commit_msg" | grep -qE "$conventional_commit_regex"; then
+    echo "ERROR: Commit message does not follow Conventional Commits format!"
+    echo ""
+    echo "Your commit message:"
+    echo "  $commit_msg"
+    echo ""
+    echo "Required format:"
+    echo "  <type>(<scope>): <subject>"
+    echo ""
+    echo "Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+    echo ""
+    echo "Examples:"
+    echo "  feat(sensor): add battery level sensor"
+    echo "  fix(config-flow): correct validation error"
+    echo "  docs: update README"
+    echo ""
+    echo "See CONTRIBUTING.md for more details."
+    exit 1
+fi
+
+echo "Commit message follows Conventional Commits format"
+exit 0
