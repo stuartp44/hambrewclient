@@ -8,6 +8,8 @@ A Home Assistant custom component for integrating MiniBrew Craft and Keg devices
 
 This integration allows you to monitor and control your MiniBrew brewing devices through Home Assistant. It supports both MiniBrew Craft (brewing devices) and MiniBrew Keg (dispensing devices), providing real-time monitoring of temperatures, brew stages, and device status.
 
+**IMPORTANT:** A MiniBrew Pro subscription is required for this integration to function. The integration uses the MiniBrew API which requires an active Pro subscription to access device data and control features.
+
 ## Features
 
 ### Craft Device Sensors
@@ -75,6 +77,7 @@ To access options:
 
 - Home Assistant 2023.1 or newer
 - MiniBrew account with registered devices
+- **MiniBrew Pro subscription** (required for API access)
 - `pymbrewclient>=1.0.10` (automatically installed)
 
 ## Dependencies
