@@ -10,8 +10,23 @@ permissions:
   pull-requests: write
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    name: Wait for validations to pass
+    
+    steps:
+      - name: Wait for required checks
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-regexp: '(Validate HACS|Validate with hassfest|Validate manifest.json|Validate Commits)'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+          allowed-conclusions: success,skipped
+
   release:
     runs-on: ubuntu-latest
+    needs: validate
     
     steps:
       - name: Checkout code
