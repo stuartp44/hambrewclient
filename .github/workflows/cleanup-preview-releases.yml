@@ -1,0 +1,78 @@
+name: Cleanup Preview Releases
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Find and delete preview releases
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            
+            console.log(`Looking for preview releases for PR #${prNumber}...`);
+            
+            // Get all releases
+            const releases = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            
+            let deletedCount = 0;
+            
+            // Find and delete preview releases for this PR
+            for (const release of releases.data) {
+              // Match pattern: v*-preview.{PR_NUMBER}.*
+              const previewPattern = new RegExp(`^v.*-preview\\.${prNumber}\\.`);
+              
+              if (previewPattern.test(release.tag_name)) {
+                console.log(`Deleting preview release: ${release.tag_name} (${release.name})`);
+                
+                try {
+                  // Delete the release
+                  await github.rest.repos.deleteRelease({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    release_id: release.id
+                  });
+                  
+                  // Delete the tag
+                  await github.rest.git.deleteRef({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ref: `tags/${release.tag_name}`
+                  });
+                  
+                  deletedCount++;
+                  console.log(`✓ Deleted ${release.tag_name}`);
+                } catch (error) {
+                  console.error(`✗ Failed to delete ${release.tag_name}: ${error.message}`);
+                }
+              }
+            }
+            
+            if (deletedCount > 0) {
+              console.log(`\nSuccessfully deleted ${deletedCount} preview release(s)`);
+              
+              // Comment on PR if it was merged
+              if (context.payload.pull_request.merged) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  body: `🧹 Cleaned up ${deletedCount} preview release(s) for this PR.`
+                });
+              }
+            } else {
+              console.log('No preview releases found for this PR');
+            }
