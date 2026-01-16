@@ -1,7 +1,7 @@
 [tool.semantic_release]
 version_toml = ["pyproject.toml:tool.semantic_release.version"]
 version_variables = []
-version = "0.5.0"
+version = "0.6.0"
 build_command = ""
 commit_message = "chore(release): {version}"
 commit_parser = "conventional"
