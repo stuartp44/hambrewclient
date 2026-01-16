@@ -51,9 +51,8 @@ class PymbrewClientConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         except ConnectionError:
             return self._show_user_form(errors={"base": "cannot_connect"})
-        except ConnectionError:
-            return self._show_user_form(errors={"host": "cannot_connect"})
-        except RuntimeError:
+        except Exception as err:
+            _LOGGER.error("Unexpected error: %s", err)
             return self._show_user_form(errors={"base": "unknown_error"})
 
 
@@ -75,13 +74,10 @@ class PymbrewClientConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        return PymbrewClientOptionsFlowHandler(config_entry)  # Implement options flow if needed
+        return PymbrewClientOptionsFlowHandler()
 
 class PymbrewClientOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for PymbrewClient."""
-
-    def __init__(self, config_entry):
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""

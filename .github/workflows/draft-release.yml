@@ -15,9 +15,13 @@ on:
   push:
     tags:
       - 'v*-preview*'
+      - 'v*-preview'
       - 'v*-beta*'
+      - 'v*-beta'
       - 'v*-alpha*'
+      - 'v*-alpha'
       - 'v*-rc*'
+      - 'v*-rc'
 
 permissions:
   contents: write

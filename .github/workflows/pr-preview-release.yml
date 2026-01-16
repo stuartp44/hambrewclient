@@ -139,14 +139,14 @@ jobs:
           cd release
           zip -r ../minibrew-${{ steps.version.outputs.version }}.zip minibrew/
 
-      - name: Create draft release
+      - name: Create preview release
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: Preview ${{ steps.version.outputs.version }} (PR #${{ steps.pr.outputs.number }})
           body_path: changelog.md
-          draft: true
+          draft: false
           prerelease: true
           files: |
             minibrew-${{ steps.version.outputs.version }}.zip
