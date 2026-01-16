@@ -51,9 +51,8 @@ class PymbrewClientConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         except ConnectionError:
             return self._show_user_form(errors={"base": "cannot_connect"})
-        except ConnectionError:
-            return self._show_user_form(errors={"host": "cannot_connect"})
-        except RuntimeError:
+        except Exception as err:
+            _LOGGER.error("Unexpected error: %s", err)
             return self._show_user_form(errors={"base": "unknown_error"})
 
 
