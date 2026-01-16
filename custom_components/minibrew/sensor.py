@@ -144,6 +144,8 @@ class CraftSensor(SensorEntity):
 class CraftSensorBrewStageSensor(CraftSensor):
     """Sensor for the current brew stage of the Craft device."""
 
+    _attr_translation_key = "brew_stage"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -168,6 +170,8 @@ class CraftSensorBrewStageSensor(CraftSensor):
 
 class CraftSensorCurrentTemperatureSensor(CraftSensor):
     """Sensor for the current temperature of the Craft device."""
+
+    _attr_translation_key = "current_temperature"
 
     @property
     def name(self):
@@ -205,6 +209,8 @@ class CraftSensorCurrentTemperatureSensor(CraftSensor):
 class CraftSensorTargetTemperatureSensor(CraftSensor):
     """Sensor for the target temperature of the Craft device."""
 
+    _attr_translation_key = "target_temperature"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -241,6 +247,8 @@ class CraftSensorTargetTemperatureSensor(CraftSensor):
 class CraftSensorOnlineStatusSensor(CraftSensor):
     """Sensor for the online status of the Craft device."""
 
+    _attr_translation_key = "cloud_connection"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -250,7 +258,7 @@ class CraftSensorOnlineStatusSensor(CraftSensor):
     def native_value(self):
         """Return the online status."""
         device = self._get_latest_device()
-        return "Online" if device and device.get("online") else "Offline"
+        return "online" if device and device.get("online") else "offline"
 
     @property
     def entity_category(self):
@@ -271,6 +279,8 @@ class CraftSensorOnlineStatusSensor(CraftSensor):
 class CraftSensorIsUpdatingSensor(CraftSensor):
     """Sensor for the update status of the Craft device."""
 
+    _attr_translation_key = "update_status"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -280,7 +290,7 @@ class CraftSensorIsUpdatingSensor(CraftSensor):
     def native_value(self):
         """Return the update status."""
         device = self._get_latest_device()
-        return "Updating" if device and device.get("updating") else "Not Updating"
+        return "updating" if device and device.get("updating") else "not_updating"
 
     @property
     def entity_category(self):
@@ -300,6 +310,8 @@ class CraftSensorIsUpdatingSensor(CraftSensor):
 class CraftUserActionRequiredSensor(CraftSensor):
     """Sensor for user action required status of the Craft device."""
 
+    _attr_translation_key = "user_action_required"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -310,15 +322,15 @@ class CraftUserActionRequiredSensor(CraftSensor):
         """Return the user action required status."""
         device = self._get_latest_device()
         if not device:
-            return "Unknown"
+            return "unknown"
 
         action = device.get("user_action")
 
         if action != 0 and action is not None:
-            return "Action Required"
+            return "action_required"
         elif action == 0:
-            return "No Action Required"
-        return "Unknown"
+            return "no_action_required"
+        return "unknown"
 
 
     @property
@@ -346,6 +358,8 @@ class CraftUserActionRequiredSensor(CraftSensor):
 class CraftSensorCurrentStageSensor(CraftSensor):
     """Sensor for the current stage of the Craft device."""
 
+    _attr_translation_key = "current_stage"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -354,19 +368,12 @@ class CraftSensorCurrentStageSensor(CraftSensor):
     @property
     def native_value(self):
         """Return a human-readable phase name based on the device's group."""
-        phase_map = {
-            "brew_clean_idle": "Clean and Ready to Brew",
-            "fermenting": "Fermenting",
-            "serving": "Serving",
-            "brew_acid_clean_idle": "Ready to Clean"
-        }
-
         for group_name, devices in self.coordinator.data.__dict__.items():
             for dev in devices:
                 if dev.get("serial_number") == self.device_id:
-                    return phase_map.get(group_name, group_name)  # fallback to raw name
+                    return group_name
 
-        return "Unknown"
+        return "unknown"
 
     @property
     def icon(self):
@@ -380,6 +387,8 @@ class CraftSensorCurrentStageSensor(CraftSensor):
 
 class CraftSensorTimeInStageSensor(CraftSensor):
     """Sensor for the time spent in the current stage of the Craft device."""
+
+    _attr_translation_key = "time_in_stage"
 
     @property
     def name(self):
@@ -416,6 +425,8 @@ class CraftSensorTimeInStageSensor(CraftSensor):
 class CraftSensorNeedsCleaningSensor(CraftSensor):
     """Sensor for the cleaning status of the Craft device."""
 
+    _attr_translation_key = "needs_cleaning"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -425,7 +436,7 @@ class CraftSensorNeedsCleaningSensor(CraftSensor):
     def native_value(self):
         """Return the cleaning status."""
         device = self._get_latest_device()
-        return "Needs Cleaning" if device and device.get("needs_acid_cleaning") else "Clean"
+        return "needs_cleaning" if device and device.get("needs_acid_cleaning") else "clean"
 
     @property
     def entity_category(self):
@@ -492,6 +503,8 @@ class KegSensor(SensorEntity):
 class KegCurrentTemperatureSensor(KegSensor):
     """Sensor for the current temperature of the Keg device."""
 
+    _attr_translation_key = "temperature"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -526,6 +539,8 @@ class KegCurrentTemperatureSensor(KegSensor):
 
 class KegTargetTemperatureSensor(KegSensor):
     """Sensor for the target temperature of the Keg device."""
+
+    _attr_translation_key = "target_temperature"
 
     @property
     def name(self):
@@ -562,6 +577,8 @@ class KegTargetTemperatureSensor(KegSensor):
 class KegBeerStyleSensor(KegSensor):
     """Sensor for the beer style of the Keg device."""
 
+    _attr_translation_key = "beer_style"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -581,6 +598,8 @@ class KegBeerStyleSensor(KegSensor):
 
 class KegBeerNameSensor(KegSensor):
     """Sensor for the beer name of the Keg device."""
+
+    _attr_translation_key = "beer_name"
 
     @property
     def name(self):
@@ -607,6 +626,8 @@ class KegBeerNameSensor(KegSensor):
 class KegOnlineStatusSensor(KegSensor):
     """Sensor for the online status of the Keg device."""
 
+    _attr_translation_key = "cloud_connection"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -616,7 +637,7 @@ class KegOnlineStatusSensor(KegSensor):
     def native_value(self):
         """Return the online status."""
         device = self._get_latest_device()
-        return "Online" if device and device.get("online") else "Offline"
+        return "online" if device and device.get("online") else "offline"
 
     @property
     def entity_category(self):
@@ -637,6 +658,8 @@ class KegOnlineStatusSensor(KegSensor):
 class KegIsUpdatingSensor(KegSensor):
     """Sensor for the update status of the Keg device."""
 
+    _attr_translation_key = "update_status"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -646,7 +669,7 @@ class KegIsUpdatingSensor(KegSensor):
     def native_value(self):
         """Return the update status."""
         device = self._get_latest_device()
-        return "Updating" if device and device.get("updating") else "Not Updating"
+        return "updating" if device and device.get("updating") else "not_updating"
 
     @property
     def entity_category(self):
@@ -667,6 +690,8 @@ class KegIsUpdatingSensor(KegSensor):
 class KegNeedsCleaningSensor(KegSensor):
     """Sensor for the cleaning status of the Keg device."""
 
+    _attr_translation_key = "needs_cleaning"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -676,7 +701,7 @@ class KegNeedsCleaningSensor(KegSensor):
     def native_value(self):
         """Return the cleaning status."""
         device = self._get_latest_device()
-        return "Needs Cleaning" if device and device.get("needs_acid_cleaning") else "Clean"
+        return "needs_cleaning" if device and device.get("needs_acid_cleaning") else "clean"
 
     @property
     def entity_category(self):
@@ -696,6 +721,8 @@ class KegNeedsCleaningSensor(KegSensor):
 class KegActionRequiredSensor(KegSensor):
     """Sensor for user action required status of the Keg device."""
 
+    _attr_translation_key = "user_action_required"
+
     @property
     def name(self):
         """Return the name of the sensor."""
@@ -706,15 +733,15 @@ class KegActionRequiredSensor(KegSensor):
         """Return the user action required status."""
         device = self._get_latest_device()
         if not device:
-            return "Unknown"
+            return "unknown"
 
         action = device.get("user_action")
 
         if action != 0 and action is not None:
-            return "Action Required"
+            return "action_required"
         elif action == 0:
-            return "No Action Required"
-        return "Unknown"
+            return "no_action_required"
+        return "unknown"
 
 
     @property

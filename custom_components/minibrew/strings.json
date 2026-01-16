@@ -1,0 +1,97 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up MiniBrew",
+        "description": "Enter your MiniBrew credentials to connect to your devices.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to MiniBrew. Please check your credentials and try again.",
+      "no_devices_found": "No MiniBrew devices found in your account.",
+      "unknown_error": "An unexpected error occurred. Please try again."
+    },
+    "abort": {
+      "already_configured": "This MiniBrew account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MiniBrew Options",
+        "description": "Configure how often the integration updates data from your MiniBrew devices.",
+        "data": {
+          "refresh_interval": "Update interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "brew_stage": {
+        "name": "Brew stage"
+      },
+      "current_temperature": {
+        "name": "Current temperature"
+      },
+      "target_temperature": {
+        "name": "Target temperature"
+      },
+      "cloud_connection": {
+        "name": "Cloud connection",
+        "state": {
+          "online": "Online",
+          "offline": "Offline"
+        }
+      },
+      "update_status": {
+        "name": "Update status",
+        "state": {
+          "updating": "Updating",
+          "not_updating": "Not updating"
+        }
+      },
+      "user_action_required": {
+        "name": "User action required",
+        "state": {
+          "action_required": "Action required",
+          "no_action_required": "No action required",
+          "unknown": "Unknown"
+        }
+      },
+      "current_stage": {
+        "name": "Current stage",
+        "state": {
+          "brew_clean_idle": "Clean and ready to brew",
+          "fermenting": "Fermenting",
+          "serving": "Serving",
+          "brew_acid_clean_idle": "Ready to clean",
+          "unknown": "Unknown"
+        }
+      },
+      "time_in_stage": {
+        "name": "Time in stage"
+      },
+      "needs_cleaning": {
+        "name": "Needs cleaning",
+        "state": {
+          "needs_cleaning": "Needs cleaning",
+          "clean": "Clean"
+        }
+      },
+      "temperature": {
+        "name": "Temperature"
+      },
+      "beer_style": {
+        "name": "Beer style"
+      },
+      "beer_name": {
+        "name": "Beer name"
+      }
+    }
+  }
+}
