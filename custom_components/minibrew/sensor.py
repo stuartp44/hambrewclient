@@ -100,6 +100,7 @@ class CraftSensor(SensorEntity):
     def __init__(self, coordinator, device: Device, state: str):
         """Initialize the sensor."""
         self.coordinator = coordinator
+        self.device = device
         self.device_id = device.serial_number 
         self.device_type = state
         self._attr_device_info = {
@@ -108,6 +109,7 @@ class CraftSensor(SensorEntity):
             "manufacturer": "MiniBrew",
             "model": "Craft",
             "sw_version": device.software_version,
+            "serial_number": device.serial_number,
         }
 
     @property
@@ -467,6 +469,7 @@ class KegSensor(SensorEntity):
             "manufacturer": "MiniBrew",
             "model": "Smart Keg",
             "sw_version": device.software_version,
+            "serial_number": device.serial_number,
         }
 
     @property
