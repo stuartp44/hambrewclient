@@ -459,6 +459,7 @@ class KegSensor(SensorEntity):
     def __init__(self, coordinator, device: Device, state: str):
         """Initialize the sensor."""
         self.coordinator = coordinator
+        self.device = device
         self.device_id = device.serial_number
         self.device_type = state
         self._attr_device_info = {
@@ -472,7 +473,7 @@ class KegSensor(SensorEntity):
     @property
     def unique_id(self):
         """Return a unique ID for the sensor."""
-        return f"{self.device.serial_number}_{self.name}"
+        return f"{self.device_id}_{self.name}"
     
     @property
     def available(self):
@@ -652,7 +653,7 @@ class KegOnlineStatusSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id.serial_number}_{self.name}"
+        return f"{self.device_id}_{self.name}"
 
 
 class KegIsUpdatingSensor(KegSensor):
