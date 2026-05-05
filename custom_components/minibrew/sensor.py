@@ -1,13 +1,27 @@
 import logging
+from dataclasses import asdict, is_dataclass
+from datetime import timedelta
+
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from pymbrewclient import BreweryOverview, Device
-from datetime import timedelta
 
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _device_to_dict(device):
+    if isinstance(device, dict):
+        return device
+    if isinstance(device, Device):
+        if is_dataclass(device):
+            return asdict(device)
+        return device.__dict__
+    if hasattr(device, "__dict__"):
+        return device.__dict__
+    return {}
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up MiniBrew sensors from a config entry."""
@@ -26,12 +40,16 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     def add_new_sensors():
         for state, devices in coordinator.data.__dict__.items():  # Access states dynamically
             for device_data in devices:
+                device_dict = _device_to_dict(device_data)
+                serial_number = device_dict.get("serial_number")
+                if not serial_number:
+                    continue
                 # Check if the device has already been added
-                if device_data["serial_number"] in added_devices:
+                if serial_number in added_devices:
                     continue
 
                 # Convert the raw dictionary to a Device object
-                device = Device(**device_data)
+                device = device_data if isinstance(device_data, Device) else Device(**device_dict)
 
                 # Add sensors for MiniBrew devices
                 if device.device_type == 0:  # Craft device
@@ -54,7 +72,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     sensors.append(KegNeedsCleaningSensor(coordinator, device, state))
                     sensors.append(KegActionRequiredSensor(coordinator, device, state))
                 # Mark the device as added
-                added_devices.add(device_data["serial_number"])
+                added_devices.add(serial_number)
 
     # Add initial sensors
     add_new_sensors()
@@ -139,8 +157,9 @@ class CraftSensor(SensorEntity):
         """Get the latest device data from the coordinator."""
         devices = getattr(self.coordinator.data, self.device_type, [])
         for dev in devices:
-            if dev["serial_number"] == self.device_id:
-                return dev
+            device_dict = _device_to_dict(dev)
+            if device_dict.get("serial_number") == self.device_id:
+                return device_dict
         return None
 
 class CraftSensorBrewStageSensor(CraftSensor):
@@ -372,7 +391,8 @@ class CraftSensorCurrentStageSensor(CraftSensor):
         """Return a human-readable phase name based on the device's group."""
         for group_name, devices in self.coordinator.data.__dict__.items():
             for dev in devices:
-                if dev.get("serial_number") == self.device_id:
+                device_dict = _device_to_dict(dev)
+                if device_dict.get("serial_number") == self.device_id:
                     return group_name
 
         return "unknown"
@@ -500,8 +520,9 @@ class KegSensor(SensorEntity):
         """Get the latest device data from the coordinator."""
         devices = getattr(self.coordinator.data, self.device_type, [])
         for dev in devices:
-            if dev["serial_number"] == self.device_id:
-                return dev
+            device_dict = _device_to_dict(dev)
+            if device_dict.get("serial_number") == self.device_id:
+                return device_dict
         return None
 
 class KegCurrentTemperatureSensor(KegSensor):
