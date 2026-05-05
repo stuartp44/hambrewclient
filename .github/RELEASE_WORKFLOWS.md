@@ -15,6 +15,10 @@ This project has three release workflows:
 - Updates manifest.json version
 - Generates changelog from commits
 
+**Version bump rules:**
+- Minor: `feat`
+- Patch: `fix`, `perf`, `ci`, `build`, `chore`
+
 **Usage:** Just merge your PR to main with proper conventional commit messages.
 
 ---
@@ -140,6 +144,7 @@ Share the preview release link with testers who can:
 - Merging production-ready code to main
 - You trust semantic versioning from commits
 - You want immediate release
+- You want dependency and pipeline updates released automatically
 
 ### Use Draft Release When:
 - Testing a release before publishing

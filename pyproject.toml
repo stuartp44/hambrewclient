@@ -38,7 +38,7 @@ allowed_tags = [
     "revert"
 ]
 minor_tags = ["feat"]
-patch_tags = ["fix", "perf"]
+patch_tags = ["fix", "perf", "ci", "build", "chore"]
 
 [tool.semantic_release.remote]
 type = "github"

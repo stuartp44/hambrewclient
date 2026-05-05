@@ -137,9 +137,9 @@ All commits **MUST** follow the [Conventional Commits](https://www.conventionalc
 - `refactor`: Code refactoring
 - `perf`: Performance improvements (triggers patch version bump)
 - `test`: Test changes
-- `build`: Build system changes
-- `ci`: CI/CD changes
-- `chore`: Other changes
+- `build`: Build system changes (triggers patch version bump)
+- `ci`: CI/CD changes (triggers patch version bump)
+- `chore`: Other changes (triggers patch version bump)
 
 **Examples:**
 ```bash
@@ -154,6 +154,7 @@ docs: update installation instructions
 - Releases are created automatically on merge to `main`
 - Changelog is auto-generated from commits
 - Tags follow semantic versioning (v1.0.0, v1.1.0, etc.)
+- Patch releases are triggered by `fix`, `perf`, `ci`, `build`, and `chore` commits
 
 **Please read [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.**
 
