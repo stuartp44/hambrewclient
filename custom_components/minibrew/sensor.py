@@ -627,6 +627,11 @@ class KegBeerStyleSensor(KegSensor):
         return device.get("beer_style") if device else None
 
     @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:beer"
+
+    @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_{self.name}"
