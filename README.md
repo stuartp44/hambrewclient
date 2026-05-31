@@ -26,6 +26,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 ### Keg Device Sensors
 - **Current Temperature** - Real-time keg temperature
 - **Target Temperature** - Configured serving temperature
+- **Beer Name** - Currently loaded beer name
 - **Beer Style** - Currently loaded beer style
 - **Online Status** - Device connectivity status
 - **Is Updating** - Firmware update status
