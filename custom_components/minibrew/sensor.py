@@ -67,6 +67,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     sensors.append(KegCurrentTemperatureSensor(coordinator, device, state))
                     sensors.append(KegTargetTemperatureSensor(coordinator, device, state))
                     sensors.append(KegBeerStyleSensor(coordinator, device, state))
+                    sensors.append(KegBeerNameSensor(coordinator, device, state))
                     sensors.append(KegOnlineStatusSensor(coordinator, device, state))
                     sensors.append(KegIsUpdatingSensor(coordinator, device, state))
                     sensors.append(KegNeedsCleaningSensor(coordinator, device, state))
