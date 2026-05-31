@@ -38,12 +38,18 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     
     # Function to add new sensors dynamically
     def add_new_sensors():
+        # Track devices currently in the API response
+        current_devices = set()
+        
         for state, devices in coordinator.data.__dict__.items():  # Access states dynamically
             for device_data in devices:
                 device_dict = _device_to_dict(device_data)
                 serial_number = device_dict.get("serial_number")
                 if not serial_number:
                     continue
+                
+                current_devices.add(serial_number)
+                
                 # Check if the device has already been added
                 if serial_number in added_devices:
                     continue
@@ -74,6 +80,10 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     sensors.append(KegActionRequiredSensor(coordinator, device, state))
                 # Mark the device as added
                 added_devices.add(serial_number)
+        
+        # Remove devices that are no longer in the API response
+        # This allows offline/reconnecting devices to be re-registered
+        added_devices.intersection_update(current_devices)
 
     # Add initial sensors
     add_new_sensors()
