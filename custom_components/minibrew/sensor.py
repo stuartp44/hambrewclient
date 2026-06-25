@@ -395,11 +395,6 @@ class CraftNextActionDateTimeSensor(CraftSensor):
     _attr_translation_key = "next_action_datetime"
 
     @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Next Action Date and Time"
-
-    @property
     def native_value(self):
         """Return the date and time for the next required action."""
         device = self._get_latest_device()
@@ -846,11 +841,6 @@ class KegNextActionDateTimeSensor(KegSensor):
     """Sensor for the date and time of the next required action."""
 
     _attr_translation_key = "next_action_datetime"
-
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Next Action Date and Time"
 
     @property
     def native_value(self):
