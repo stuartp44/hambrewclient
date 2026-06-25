@@ -68,6 +68,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     sensors.append(CraftSensorCurrentStageSensor(coordinator, device, state))
                     sensors.append(CraftSensorNeedsCleaningSensor(coordinator, device, state))
                     sensors.append(CraftUserActionRequiredSensor(coordinator, device, state))
+                    sensors.append(CraftNextActionDateTimeSensor(coordinator, device, state))
                 # Add sensors for Keg devices
                 elif device.device_type == 1:  # Keg device
                     sensors.append(KegCurrentTemperatureSensor(coordinator, device, state))
@@ -78,6 +79,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     sensors.append(KegIsUpdatingSensor(coordinator, device, state))
                     sensors.append(KegNeedsCleaningSensor(coordinator, device, state))
                     sensors.append(KegActionRequiredSensor(coordinator, device, state))
+                    sensors.append(KegNextActionDateTimeSensor(coordinator, device, state))
                 # Mark the device as added
                 added_devices.add(serial_number)
         
@@ -385,6 +387,39 @@ class CraftUserActionRequiredSensor(CraftSensor):
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_user_action_required"
+
+
+class CraftNextActionDateTimeSensor(CraftSensor):
+    """Sensor for the date and time of the next required action."""
+
+    _attr_translation_key = "next_action_datetime"
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Next Action Date and Time"
+
+    @property
+    def native_value(self):
+        """Return the date and time for the next required action."""
+        device = self._get_latest_device()
+        if not device:
+            return None
+
+        action = device.get("user_action")
+        if action == 0 or action is None:
+            return None
+        return device.get("sub_title")
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:calendar-clock"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_next_action_datetime"
 
 
 class CraftSensorCurrentStageSensor(CraftSensor):
@@ -805,3 +840,36 @@ class KegActionRequiredSensor(KegSensor):
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_{self.name}"
+
+
+class KegNextActionDateTimeSensor(KegSensor):
+    """Sensor for the date and time of the next required action."""
+
+    _attr_translation_key = "next_action_datetime"
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Next Action Date and Time"
+
+    @property
+    def native_value(self):
+        """Return the date and time for the next required action."""
+        device = self._get_latest_device()
+        if not device:
+            return None
+
+        action = device.get("user_action")
+        if action == 0 or action is None:
+            return None
+        return device.get("sub_title")
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:calendar-clock"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_next_action_datetime"
