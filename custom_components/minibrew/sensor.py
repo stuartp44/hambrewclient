@@ -407,6 +407,11 @@ class CraftNextActionDateTimeSensor(CraftSensor):
         return device.get("sub_title")
 
     @property
+    def entity_category(self):
+        """Return the entity category."""
+        return EntityCategory.DIAGNOSTIC
+
+    @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:calendar-clock"
@@ -853,6 +858,11 @@ class KegNextActionDateTimeSensor(KegSensor):
         if action == 0 or action is None:
             return None
         return device.get("sub_title")
+
+    @property
+    def entity_category(self):
+        """Return the entity category (diagnostic)."""
+        return EntityCategory.DIAGNOSTIC
 
     @property
     def icon(self):
