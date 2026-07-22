@@ -22,6 +22,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **User Action Required** - Notifications for required user actions
+- **Next Action Remaining Time** - Human-readable remaining time derived from MiniBrew's REST process estimate
 
 ### Keg Device Sensors
 - **Current Temperature** - Real-time keg temperature
@@ -32,6 +33,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **Action Required** - Notifications for required user actions
+- **Next Action Remaining Time** - Human-readable remaining time derived from MiniBrew's REST process estimate
 
 ## Installation
 
@@ -79,7 +81,7 @@ To access options:
 - Home Assistant 2023.1 or newer
 - MiniBrew account with registered devices
 - **MiniBrew Pro subscription** (required for API access)
-- [`pymbrewclient>=1.0.10`](https://github.com/stuartp44/pymbrewclient) (automatically installed)
+- [`pymbrewclient>=1.9.0`](https://github.com/stuartp44/pymbrewclient) (automatically installed)
 
 ## Dependencies
 

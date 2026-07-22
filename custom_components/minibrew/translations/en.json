@@ -63,6 +63,9 @@
           "unknown": "Unknown"
         }
       },
+      "next_action_time_remaining": {
+        "name": "Next action remaining time"
+      },
       "current_stage": {
         "name": "Current stage",
         "state": {
@@ -75,6 +78,9 @@
       },
       "time_in_stage": {
         "name": "Time in stage"
+      },
+      "time_in_stage_duration": {
+        "name": "Time in stage (H:MM:SS)"
       },
       "needs_cleaning": {
         "name": "Needs cleaning",

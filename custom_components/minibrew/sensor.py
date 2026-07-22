@@ -1,11 +1,11 @@
 import logging
 from dataclasses import asdict, is_dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from pymbrewclient import BreweryOverview, Device
+from pymbrewclient import Device
 
 from .const import DOMAIN
 
@@ -22,6 +22,49 @@ def _device_to_dict(device):
     if hasattr(device, "__dict__"):
         return device.__dict__
     return {}
+
+
+def _coerce_timestamp(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    return None
+
+
+def _format_remaining_time(value):
+    timestamp = _coerce_timestamp(value)
+    if timestamp is None:
+        return None
+
+    remaining_seconds = max(0, int((timestamp - datetime.now(timezone.utc)).total_seconds()))
+    hours, remainder = divmod(remaining_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d}"
+
+
+def _format_duration_seconds(value):
+    if value is None:
+        return None
+
+    try:
+        total_seconds = max(0, int(value))
+    except (TypeError, ValueError):
+        return None
+
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d}"
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up MiniBrew sensors from a config entry."""
@@ -68,16 +111,19 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     sensors.append(CraftSensorCurrentStageSensor(coordinator, device, state))
                     sensors.append(CraftSensorNeedsCleaningSensor(coordinator, device, state))
                     sensors.append(CraftUserActionRequiredSensor(coordinator, device, state))
+                    sensors.append(CraftNextActionDateTimeSensor(coordinator, device, state))
                 # Add sensors for Keg devices
                 elif device.device_type == 1:  # Keg device
                     sensors.append(KegCurrentTemperatureSensor(coordinator, device, state))
                     sensors.append(KegTargetTemperatureSensor(coordinator, device, state))
                     sensors.append(KegBeerStyleSensor(coordinator, device, state))
                     sensors.append(KegBeerNameSensor(coordinator, device, state))
+                    sensors.append(KegTimeInStageSensor(coordinator, device, state))
                     sensors.append(KegOnlineStatusSensor(coordinator, device, state))
                     sensors.append(KegIsUpdatingSensor(coordinator, device, state))
                     sensors.append(KegNeedsCleaningSensor(coordinator, device, state))
                     sensors.append(KegActionRequiredSensor(coordinator, device, state))
+                    sensors.append(KegNextActionDateTimeSensor(coordinator, device, state))
                 # Mark the device as added
                 added_devices.add(serial_number)
         
@@ -387,6 +433,35 @@ class CraftUserActionRequiredSensor(CraftSensor):
         return f"{self.device_id}_user_action_required"
 
 
+class CraftNextActionDateTimeSensor(CraftSensor):
+    """Sensor for the remaining time until the next required action."""
+
+    _attr_translation_key = "next_action_time_remaining"
+
+    @property
+    def native_value(self):
+        """Return a human-readable remaining time for the next required action."""
+        device = self._get_latest_device()
+        if not device:
+            return None
+        return _format_remaining_time(device.get("process_estimate_remaining"))
+
+    @property
+    def entity_category(self):
+        """Return the entity category."""
+        return EntityCategory.DIAGNOSTIC
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:calendar-clock"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_next_action_time_remaining"
+
+
 class CraftSensorCurrentStageSensor(CraftSensor):
     """Sensor for the current stage of the Craft device."""
 
@@ -419,9 +494,11 @@ class CraftSensorCurrentStageSensor(CraftSensor):
         return f"{self.device_id}_current_stage"
 
 class CraftSensorTimeInStageSensor(CraftSensor):
-    """Sensor for the time spent in the current stage of the Craft device."""
+    """Sensor for the formatted time spent in the current stage of the Craft device."""
 
     _attr_translation_key = "time_in_stage"
+    _attr_native_unit_of_measurement = None
+    _attr_suggested_unit_of_measurement = None
 
     @property
     def name(self):
@@ -430,14 +507,17 @@ class CraftSensorTimeInStageSensor(CraftSensor):
 
     @property
     def native_value(self):
-        """Return the time spent in the current stage."""
+        """Return a human-readable duration for the time spent in the current stage."""
         device = self._get_latest_device()
-        return device.get("status_time") if device else None
+        if not device:
+            return None
+
+        return _format_duration_seconds(device.get("status_time"))
 
     @property
     def unit_of_measurement(self):
-        """Return the unit of measurement."""
-        return "seconds"
+        """Force no unit to avoid HA appending legacy seconds metadata."""
+        return None
 
     @property
     def available(self):
@@ -449,6 +529,17 @@ class CraftSensorTimeInStageSensor(CraftSensor):
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:clock"
+
+    @property
+    def extra_state_attributes(self):
+        """Expose raw and formatted values for runtime verification."""
+        device = self._get_latest_device()
+        raw_seconds = device.get("status_time") if device else None
+        return {
+            "raw_status_time_seconds": raw_seconds,
+            "formatted_status_time": _format_duration_seconds(raw_seconds),
+            "format_version": "hms-v2",
+        }
 
     @property
     def unique_id(self):
@@ -664,6 +755,60 @@ class KegBeerNameSensor(KegSensor):
         return f"{self.device_id}_{self.name}"
 
 
+class KegTimeInStageSensor(KegSensor):
+    """Sensor for the formatted time spent in the current stage of the Keg device."""
+
+    _attr_translation_key = "time_in_stage"
+    _attr_native_unit_of_measurement = None
+    _attr_suggested_unit_of_measurement = None
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Time in Stage"
+
+    @property
+    def native_value(self):
+        """Return a human-readable duration for the time spent in the current stage."""
+        device = self._get_latest_device()
+        if not device:
+            return None
+
+        return _format_duration_seconds(device.get("status_time"))
+
+    @property
+    def unit_of_measurement(self):
+        """Force no unit to avoid HA appending legacy seconds metadata."""
+        return None
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:clock-time-eight"
+
+    @property
+    def extra_state_attributes(self):
+        """Expose raw and formatted values for runtime verification."""
+        device = self._get_latest_device()
+        raw_seconds = device.get("status_time") if device else None
+        return {
+            "raw_status_time_seconds": raw_seconds,
+            "formatted_status_time": _format_duration_seconds(raw_seconds),
+            "format_version": "hms-v2",
+        }
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        device = self._get_latest_device()
+        return device is not None and device.get("status_time") is not None
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_time_in_stage"
+
+
 class KegOnlineStatusSensor(KegSensor):
     """Sensor for the online status of the Keg device."""
 
@@ -805,3 +950,32 @@ class KegActionRequiredSensor(KegSensor):
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_{self.name}"
+
+
+class KegNextActionDateTimeSensor(KegSensor):
+    """Sensor for the remaining time until the next required action."""
+
+    _attr_translation_key = "next_action_time_remaining"
+
+    @property
+    def native_value(self):
+        """Return a human-readable remaining time for the next required action."""
+        device = self._get_latest_device()
+        if not device:
+            return None
+        return _format_remaining_time(device.get("process_estimate_remaining"))
+
+    @property
+    def entity_category(self):
+        """Return the entity category (diagnostic)."""
+        return EntityCategory.DIAGNOSTIC
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:calendar-clock"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_next_action_time_remaining"
