@@ -479,9 +479,9 @@ class CraftSensorCurrentStageSensor(CraftSensor):
         return f"{self.device_id}_current_stage"
 
 class CraftSensorTimeInStageSensor(CraftSensor):
-    """Sensor for the time spent in the current stage of the Craft device."""
+    """Sensor for the formatted time spent in the current stage of the Craft device."""
 
-    _attr_translation_key = "time_in_stage"
+    _attr_translation_key = "time_in_stage_duration"
 
     @property
     def name(self):
@@ -490,14 +490,23 @@ class CraftSensorTimeInStageSensor(CraftSensor):
 
     @property
     def native_value(self):
-        """Return the time spent in the current stage."""
+        """Return a human-readable duration for the time spent in the current stage."""
         device = self._get_latest_device()
-        return device.get("status_time") if device else None
+        if not device:
+            return None
 
-    @property
-    def unit_of_measurement(self):
-        """Return the unit of measurement."""
-        return "seconds"
+        seconds = device.get("status_time")
+        if seconds is None:
+            return None
+
+        try:
+            total_seconds = max(0, int(seconds))
+        except (TypeError, ValueError):
+            return None
+
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, secs = divmod(remainder, 60)
+        return f"{hours}:{minutes:02d}:{secs:02d}"
 
     @property
     def available(self):
