@@ -77,7 +77,7 @@
         }
       },
       "time_in_stage_duration": {
-        "name": "Time in stage"
+        "name": "Time in stage (H:MM:SS)"
       },
       "needs_cleaning": {
         "name": "Needs cleaning",

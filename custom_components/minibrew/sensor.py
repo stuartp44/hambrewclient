@@ -52,6 +52,20 @@ def _format_remaining_time(value):
     minutes, seconds = divmod(remainder, 60)
     return f"{hours}:{minutes:02d}:{seconds:02d}"
 
+
+def _format_duration_seconds(value):
+    if value is None:
+        return None
+
+    try:
+        total_seconds = max(0, int(value))
+    except (TypeError, ValueError):
+        return None
+
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d}"
+
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up MiniBrew sensors from a config entry."""
     client = hass.data[DOMAIN][config_entry.entry_id]  # Get the BreweryClient instance
@@ -104,6 +118,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     sensors.append(KegTargetTemperatureSensor(coordinator, device, state))
                     sensors.append(KegBeerStyleSensor(coordinator, device, state))
                     sensors.append(KegBeerNameSensor(coordinator, device, state))
+                    sensors.append(KegTimeInStageSensor(coordinator, device, state))
                     sensors.append(KegOnlineStatusSensor(coordinator, device, state))
                     sensors.append(KegIsUpdatingSensor(coordinator, device, state))
                     sensors.append(KegNeedsCleaningSensor(coordinator, device, state))
@@ -482,11 +497,13 @@ class CraftSensorTimeInStageSensor(CraftSensor):
     """Sensor for the formatted time spent in the current stage of the Craft device."""
 
     _attr_translation_key = "time_in_stage_duration"
+    _attr_native_unit_of_measurement = None
+    _attr_suggested_unit_of_measurement = None
 
     @property
     def name(self):
         """Return the name of the sensor."""
-        return "Time in Stage"
+        return "Time in Stage (H:MM:SS)"
 
     @property
     def native_value(self):
@@ -495,18 +512,12 @@ class CraftSensorTimeInStageSensor(CraftSensor):
         if not device:
             return None
 
-        seconds = device.get("status_time")
-        if seconds is None:
-            return None
+        return _format_duration_seconds(device.get("status_time"))
 
-        try:
-            total_seconds = max(0, int(seconds))
-        except (TypeError, ValueError):
-            return None
-
-        hours, remainder = divmod(total_seconds, 3600)
-        minutes, secs = divmod(remainder, 60)
-        return f"{hours}:{minutes:02d}:{secs:02d}"
+    @property
+    def unit_of_measurement(self):
+        """Force no unit to avoid HA appending legacy seconds metadata."""
+        return None
 
     @property
     def available(self):
@@ -731,6 +742,49 @@ class KegBeerNameSensor(KegSensor):
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_{self.name}"
+
+
+class KegTimeInStageSensor(KegSensor):
+    """Sensor for the formatted time spent in the current stage of the Keg device."""
+
+    _attr_translation_key = "time_in_stage_duration"
+    _attr_native_unit_of_measurement = None
+    _attr_suggested_unit_of_measurement = None
+
+    @property
+    def name(self):
+        """Return the name of the sensor."""
+        return "Time in Stage (H:MM:SS)"
+
+    @property
+    def native_value(self):
+        """Return a human-readable duration for the time spent in the current stage."""
+        device = self._get_latest_device()
+        if not device:
+            return None
+
+        return _format_duration_seconds(device.get("status_time"))
+
+    @property
+    def unit_of_measurement(self):
+        """Force no unit to avoid HA appending legacy seconds metadata."""
+        return None
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:clock-time-eight"
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        device = self._get_latest_device()
+        return device is not None and device.get("status_time") is not None
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_time_in_stage"
 
 
 class KegOnlineStatusSensor(KegSensor):
