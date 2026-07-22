@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from pymbrewclient import BreweryOverview, Device
+from pymbrewclient import Device
 
 from .const import DOMAIN
 
