@@ -76,6 +76,9 @@
           "unknown": "Unknown"
         }
       },
+      "time_in_stage": {
+        "name": "Time in stage"
+      },
       "time_in_stage_duration": {
         "name": "Time in stage (H:MM:SS)"
       },

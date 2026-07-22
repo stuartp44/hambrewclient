@@ -496,14 +496,14 @@ class CraftSensorCurrentStageSensor(CraftSensor):
 class CraftSensorTimeInStageSensor(CraftSensor):
     """Sensor for the formatted time spent in the current stage of the Craft device."""
 
-    _attr_translation_key = "time_in_stage_duration"
+    _attr_translation_key = "time_in_stage"
     _attr_native_unit_of_measurement = None
     _attr_suggested_unit_of_measurement = None
 
     @property
     def name(self):
         """Return the name of the sensor."""
-        return "Time in Stage (H:MM:SS)"
+        return "Time in Stage"
 
     @property
     def native_value(self):
@@ -531,9 +531,20 @@ class CraftSensorTimeInStageSensor(CraftSensor):
         return "mdi:clock"
 
     @property
+    def extra_state_attributes(self):
+        """Expose raw and formatted values for runtime verification."""
+        device = self._get_latest_device()
+        raw_seconds = device.get("status_time") if device else None
+        return {
+            "raw_status_time_seconds": raw_seconds,
+            "formatted_status_time": _format_duration_seconds(raw_seconds),
+            "format_version": "hms-v2",
+        }
+
+    @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_time_in_stage_duration"
+        return f"{self.device_id}_time_in_stage"
 
 class CraftSensorNeedsCleaningSensor(CraftSensor):
     """Sensor for the cleaning status of the Craft device."""
@@ -747,14 +758,14 @@ class KegBeerNameSensor(KegSensor):
 class KegTimeInStageSensor(KegSensor):
     """Sensor for the formatted time spent in the current stage of the Keg device."""
 
-    _attr_translation_key = "time_in_stage_duration"
+    _attr_translation_key = "time_in_stage"
     _attr_native_unit_of_measurement = None
     _attr_suggested_unit_of_measurement = None
 
     @property
     def name(self):
         """Return the name of the sensor."""
-        return "Time in Stage (H:MM:SS)"
+        return "Time in Stage"
 
     @property
     def native_value(self):
@@ -776,6 +787,17 @@ class KegTimeInStageSensor(KegSensor):
         return "mdi:clock-time-eight"
 
     @property
+    def extra_state_attributes(self):
+        """Expose raw and formatted values for runtime verification."""
+        device = self._get_latest_device()
+        raw_seconds = device.get("status_time") if device else None
+        return {
+            "raw_status_time_seconds": raw_seconds,
+            "formatted_status_time": _format_duration_seconds(raw_seconds),
+            "format_version": "hms-v2",
+        }
+
+    @property
     def available(self) -> bool:
         """Return True if entity is available."""
         device = self._get_latest_device()
@@ -784,7 +806,7 @@ class KegTimeInStageSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_time_in_stage_duration"
+        return f"{self.device_id}_time_in_stage"
 
 
 class KegOnlineStatusSensor(KegSensor):
