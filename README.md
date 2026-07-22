@@ -22,7 +22,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **User Action Required** - Notifications for required user actions
-- **Next Action Date and Time** - UTC timestamp for the next required action from MiniBrew's process estimate
+- **Next Action Remaining Time** - Human-readable remaining time derived from MiniBrew's REST process estimate
 
 ### Keg Device Sensors
 - **Current Temperature** - Real-time keg temperature
@@ -33,7 +33,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **Action Required** - Notifications for required user actions
-- **Next Action Date and Time** - UTC timestamp for the next required action from MiniBrew's process estimate
+- **Next Action Remaining Time** - Human-readable remaining time derived from MiniBrew's REST process estimate
 
 ## Installation
 

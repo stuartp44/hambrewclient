@@ -63,8 +63,8 @@
           "unknown": "Unknown"
         }
       },
-      "next_action_datetime": {
-        "name": "Next action date and time"
+      "next_action_time_remaining": {
+        "name": "Next action remaining time"
       },
       "current_stage": {
         "name": "Current stage",

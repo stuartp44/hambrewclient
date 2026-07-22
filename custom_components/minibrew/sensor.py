@@ -2,7 +2,7 @@ import logging
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta, timezone
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from pymbrewclient import BreweryOverview, Device
@@ -40,6 +40,17 @@ def _coerce_timestamp(value):
             return parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc)
     return None
+
+
+def _format_remaining_time(value):
+    timestamp = _coerce_timestamp(value)
+    if timestamp is None:
+        return None
+
+    remaining_seconds = max(0, int((timestamp - datetime.now(timezone.utc)).total_seconds()))
+    hours, remainder = divmod(remaining_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d}"
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up MiniBrew sensors from a config entry."""
@@ -408,18 +419,17 @@ class CraftUserActionRequiredSensor(CraftSensor):
 
 
 class CraftNextActionDateTimeSensor(CraftSensor):
-    """Sensor for the date and time of the next required action."""
+    """Sensor for the remaining time until the next required action."""
 
-    _attr_translation_key = "next_action_datetime"
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_translation_key = "next_action_time_remaining"
 
     @property
     def native_value(self):
-        """Return the date and time for the next required action."""
+        """Return a human-readable remaining time for the next required action."""
         device = self._get_latest_device()
         if not device:
             return None
-        return _coerce_timestamp(device.get("process_estimate_remaining"))
+        return _format_remaining_time(device.get("process_estimate_remaining"))
 
     @property
     def entity_category(self):
@@ -434,7 +444,7 @@ class CraftNextActionDateTimeSensor(CraftSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_next_action_datetime"
+        return f"{self.device_id}_next_action_time_remaining"
 
 
 class CraftSensorCurrentStageSensor(CraftSensor):
@@ -858,18 +868,17 @@ class KegActionRequiredSensor(KegSensor):
 
 
 class KegNextActionDateTimeSensor(KegSensor):
-    """Sensor for the date and time of the next required action."""
+    """Sensor for the remaining time until the next required action."""
 
-    _attr_translation_key = "next_action_datetime"
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_translation_key = "next_action_time_remaining"
 
     @property
     def native_value(self):
-        """Return the date and time for the next required action."""
+        """Return a human-readable remaining time for the next required action."""
         device = self._get_latest_device()
         if not device:
             return None
-        return _coerce_timestamp(device.get("process_estimate_remaining"))
+        return _format_remaining_time(device.get("process_estimate_remaining"))
 
     @property
     def entity_category(self):
@@ -884,4 +893,4 @@ class KegNextActionDateTimeSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_next_action_datetime"
+        return f"{self.device_id}_next_action_time_remaining"
