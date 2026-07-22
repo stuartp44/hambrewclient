@@ -1,8 +1,8 @@
 import logging
 from dataclasses import asdict, is_dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from pymbrewclient import BreweryOverview, Device
@@ -22,6 +22,24 @@ def _device_to_dict(device):
     if hasattr(device, "__dict__"):
         return device.__dict__
     return {}
+
+
+def _coerce_timestamp(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    return None
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up MiniBrew sensors from a config entry."""
@@ -393,6 +411,7 @@ class CraftNextActionDateTimeSensor(CraftSensor):
     """Sensor for the date and time of the next required action."""
 
     _attr_translation_key = "next_action_datetime"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
     def native_value(self):
@@ -400,11 +419,7 @@ class CraftNextActionDateTimeSensor(CraftSensor):
         device = self._get_latest_device()
         if not device:
             return None
-
-        action = device.get("user_action")
-        if action == 0 or action is None:
-            return None
-        return device.get("sub_title")
+        return _coerce_timestamp(device.get("process_estimate_remaining"))
 
     @property
     def entity_category(self):
@@ -846,6 +861,7 @@ class KegNextActionDateTimeSensor(KegSensor):
     """Sensor for the date and time of the next required action."""
 
     _attr_translation_key = "next_action_datetime"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
     def native_value(self):
@@ -853,11 +869,7 @@ class KegNextActionDateTimeSensor(KegSensor):
         device = self._get_latest_device()
         if not device:
             return None
-
-        action = device.get("user_action")
-        if action == 0 or action is None:
-            return None
-        return device.get("sub_title")
+        return _coerce_timestamp(device.get("process_estimate_remaining"))
 
     @property
     def entity_category(self):
