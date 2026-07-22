@@ -533,7 +533,7 @@ class CraftSensorTimeInStageSensor(CraftSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_time_in_stage"
+        return f"{self.device_id}_time_in_stage_duration"
 
 class CraftSensorNeedsCleaningSensor(CraftSensor):
     """Sensor for the cleaning status of the Craft device."""
@@ -784,7 +784,7 @@ class KegTimeInStageSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_time_in_stage"
+        return f"{self.device_id}_time_in_stage_duration"
 
 
 class KegOnlineStatusSensor(KegSensor):
