@@ -5,7 +5,15 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from dataclasses import asdict
 
-from .const import DOMAIN
+from .const import (
+    CONF_ENABLE_REALTIME,
+    CONF_REALTIME_POLL_INTERVAL,
+    CONF_REFRESH_INTERVAL,
+    DEFAULT_ENABLE_REALTIME,
+    DEFAULT_REALTIME_POLL_INTERVAL,
+    DEFAULT_REFRESH_INTERVAL,
+    DOMAIN,
+)
 from pymbrewclient import BreweryClient, Device
 
 _LOGGER = logging.getLogger(__name__)
@@ -84,9 +92,20 @@ class PymbrewClientOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        # Default value from existing options or fallback to 60
+        options = self.config_entry.options
         options_schema = vol.Schema({
-            vol.Optional("refresh_interval", default=self.config_entry.options.get("refresh_interval", 60)): int,
+            vol.Optional(
+                CONF_ENABLE_REALTIME,
+                default=options.get(CONF_ENABLE_REALTIME, DEFAULT_ENABLE_REALTIME),
+            ): bool,
+            vol.Optional(
+                CONF_REFRESH_INTERVAL,
+                default=options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL),
+            ): int,
+            vol.Optional(
+                CONF_REALTIME_POLL_INTERVAL,
+                default=options.get(CONF_REALTIME_POLL_INTERVAL, DEFAULT_REALTIME_POLL_INTERVAL),
+            ): int,
         })
 
         return self.async_show_form(

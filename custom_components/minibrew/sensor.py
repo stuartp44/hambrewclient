@@ -2,12 +2,21 @@ import logging
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta, timezone
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from pymbrewclient import Device
 
-from .const import DOMAIN
+from .const import (
+    CONF_ENABLE_REALTIME,
+    CONF_REALTIME_POLL_INTERVAL,
+    CONF_REFRESH_INTERVAL,
+    DEFAULT_ENABLE_REALTIME,
+    DEFAULT_REALTIME_POLL_INTERVAL,
+    DEFAULT_REFRESH_INTERVAL,
+    DOMAIN,
+)
+from .realtime import MiniBrewRealtimeManager, overlay_mqtt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,15 +51,27 @@ def _coerce_timestamp(value):
     return None
 
 
-def _format_remaining_time(value):
-    timestamp = _coerce_timestamp(value)
-    if timestamp is None:
-        return None
+def _overlay_mqtt(device: dict, telemetry) -> None:
+    """Overlay live MQTT telemetry onto a REST device dict, in place.
 
-    remaining_seconds = max(0, int((timestamp - datetime.now(timezone.utc)).total_seconds()))
-    hours, remainder = divmod(remaining_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    return f"{hours}:{minutes:02d}:{seconds:02d}"
+    Thin re-export of :func:`realtime.overlay_mqtt`; kept for readability at the
+    call site in the coordinator.
+    """
+    overlay_mqtt(device, telemetry)
+
+
+def _collect_serials(coordinator, data=None):
+    """Return the set of device serial numbers present in the overview."""
+    overview = data if data is not None else coordinator.data
+    serials = set()
+    if overview is None:
+        return serials
+    for devices in overview.__dict__.values():
+        for device_data in devices:
+            serial = _device_to_dict(device_data).get("serial_number")
+            if serial:
+                serials.add(serial)
+    return serials
 
 
 def _format_duration_seconds(value):
@@ -68,14 +89,23 @@ def _format_duration_seconds(value):
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up MiniBrew sensors from a config entry."""
-    client = hass.data[DOMAIN][config_entry.entry_id]  # Get the BreweryClient instance
-    sensors = []
+    store = hass.data[DOMAIN][config_entry.entry_id]
+    client = store["client"]  # Get the BreweryClient instance
     added_devices = set()
 
     # Create a DataUpdateCoordinator
     coordinator = MiniBrewDataUpdateCoordinator(hass, client, config_entry)
     await coordinator.async_config_entry_first_refresh()
 
+    # Expose the coordinator for unload (so the MQTT stream can be stopped).
+    store["coordinator"] = coordinator
+
+    # Start the optional real-time MQTT stream and subscribe to known devices.
+    if coordinator.realtime_enabled:
+        manager = MiniBrewRealtimeManager(hass, coordinator, client)
+        await manager.async_start()
+        coordinator.realtime = manager
+        manager.async_ensure_subscribed(_collect_serials(coordinator))
 
     _LOGGER.debug(f"Brewery overview: {coordinator}")
     
@@ -83,6 +113,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     def add_new_sensors():
         # Track devices currently in the API response
         current_devices = set()
+        new_sensors = []
         
         for state, devices in coordinator.data.__dict__.items():  # Access states dynamically
             for device_data in devices:
@@ -102,43 +133,51 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
                 # Add sensors for MiniBrew devices
                 if device.device_type == 0:  # Craft device
-                    sensors.append(CraftSensorCurrentTemperatureSensor(coordinator, device, state))
-                    sensors.append(CraftSensorTargetTemperatureSensor(coordinator, device, state))
-                    sensors.append(CraftSensorOnlineStatusSensor(coordinator, device, state))
-                    sensors.append(CraftSensorIsUpdatingSensor(coordinator, device, state))
-                    sensors.append(CraftSensorBrewStageSensor(coordinator, device, state))
-                    sensors.append(CraftSensorTimeInStageSensor(coordinator, device, state))
-                    sensors.append(CraftSensorCurrentStageSensor(coordinator, device, state))
-                    sensors.append(CraftSensorNeedsCleaningSensor(coordinator, device, state))
-                    sensors.append(CraftUserActionRequiredSensor(coordinator, device, state))
-                    sensors.append(CraftNextActionDateTimeSensor(coordinator, device, state))
+                    new_sensors.append(CraftSensorCurrentTemperatureSensor(coordinator, device, state))
+                    new_sensors.append(CraftSensorTargetTemperatureSensor(coordinator, device, state))
+                    new_sensors.append(CraftSensorOnlineStatusSensor(coordinator, device, state))
+                    new_sensors.append(CraftSensorIsUpdatingSensor(coordinator, device, state))
+                    new_sensors.append(CraftSensorBrewStageSensor(coordinator, device, state))
+                    new_sensors.append(CraftSensorTimeInStageSensor(coordinator, device, state))
+                    new_sensors.append(CraftSensorCurrentStageSensor(coordinator, device, state))
+                    new_sensors.append(CraftSensorNeedsCleaningSensor(coordinator, device, state))
+                    new_sensors.append(CraftUserActionRequiredSensor(coordinator, device, state))
+                    new_sensors.append(CraftNextActionDateTimeSensor(coordinator, device, state))
+                    if coordinator.realtime_enabled:
+                        new_sensors.append(CraftWifiSignalSensor(coordinator, device, state))
                 # Add sensors for Keg devices
                 elif device.device_type == 1:  # Keg device
-                    sensors.append(KegCurrentTemperatureSensor(coordinator, device, state))
-                    sensors.append(KegTargetTemperatureSensor(coordinator, device, state))
-                    sensors.append(KegBeerStyleSensor(coordinator, device, state))
-                    sensors.append(KegBeerNameSensor(coordinator, device, state))
-                    sensors.append(KegTimeInStageSensor(coordinator, device, state))
-                    sensors.append(KegOnlineStatusSensor(coordinator, device, state))
-                    sensors.append(KegIsUpdatingSensor(coordinator, device, state))
-                    sensors.append(KegNeedsCleaningSensor(coordinator, device, state))
-                    sensors.append(KegActionRequiredSensor(coordinator, device, state))
-                    sensors.append(KegNextActionDateTimeSensor(coordinator, device, state))
+                    new_sensors.append(KegCurrentTemperatureSensor(coordinator, device, state))
+                    new_sensors.append(KegTargetTemperatureSensor(coordinator, device, state))
+                    new_sensors.append(KegBeerStyleSensor(coordinator, device, state))
+                    new_sensors.append(KegBeerNameSensor(coordinator, device, state))
+                    new_sensors.append(KegTimeInStageSensor(coordinator, device, state))
+                    new_sensors.append(KegOnlineStatusSensor(coordinator, device, state))
+                    new_sensors.append(KegIsUpdatingSensor(coordinator, device, state))
+                    new_sensors.append(KegNeedsCleaningSensor(coordinator, device, state))
+                    new_sensors.append(KegActionRequiredSensor(coordinator, device, state))
+                    new_sensors.append(KegNextActionDateTimeSensor(coordinator, device, state))
+                    if coordinator.realtime_enabled:
+                        new_sensors.append(KegWifiSignalSensor(coordinator, device, state))
                 # Mark the device as added
                 added_devices.add(serial_number)
-        
+
         # Remove devices that are no longer in the API response
         # This allows offline/reconnecting devices to be re-registered
         added_devices.intersection_update(current_devices)
 
-    # Add initial sensors
-    add_new_sensors()
-    async_add_entities(sensors)
+        return new_sensors
 
-    # Listen for updates from the coordinator and add new sensors dynamically
-    async def handle_coordinator_update():
-        add_new_sensors()
-        async_add_entities(sensors)
+    # Add initial sensors
+    async_add_entities(add_new_sensors())
+
+    # Listen for updates from the coordinator and add any newly discovered
+    # devices. This fires on every coordinator update — including frequent
+    # real-time MQTT telemetry — so only newly created entities are added.
+    def handle_coordinator_update():
+        new_sensors = add_new_sensors()
+        if new_sensors:
+            async_add_entities(new_sensors)
 
     coordinator.async_add_listener(handle_coordinator_update)
 
@@ -149,14 +188,27 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
         """Initialize the coordinator."""
         self.client = client
         self.config_entry = config_entry
-        refresh_interval = config_entry.options.get("refresh_interval", 60)
+
+        options = config_entry.options
+        self.realtime_enabled = options.get(CONF_ENABLE_REALTIME, DEFAULT_ENABLE_REALTIME)
+        refresh_interval = options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
+        realtime_poll_interval = options.get(
+            CONF_REALTIME_POLL_INTERVAL, DEFAULT_REALTIME_POLL_INTERVAL
+        )
+
+        # When real-time is on, MQTT drives the fast fields, so poll slowly
+        # (discovery + slow fields only); otherwise poll at the normal interval.
+        poll_interval = realtime_poll_interval if self.realtime_enabled else refresh_interval
+
+        # Set by async_setup_entry once the MQTT stream is started.
+        self.realtime = None
+
         super().__init__(
             hass,
             _LOGGER,
             name="MiniBrew Data Update Coordinator",
-            update_interval=timedelta(seconds=refresh_interval),  # Fetch data every 30 seconds
+            update_interval=timedelta(seconds=poll_interval),
         )
-        self.client = client
 
     async def _async_update_data(self):
         """Fetch data from the API."""
@@ -164,10 +216,41 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Fetching data from MiniBrew API...")
             data = await self.hass.async_add_executor_job(self.client.get_brewery_overview)
             _LOGGER.debug(f"Fetched data: {data}")
-            return data
         except Exception as err:
             _LOGGER.error(f"Error fetching data: {err}")
             raise UpdateFailed(f"Error fetching data: {err}")
+
+        # Subscribe the MQTT stream to any newly discovered devices.
+        if self.realtime is not None:
+            self.realtime.async_ensure_subscribed(_collect_serials(self, data))
+
+        return data
+
+    def get_telemetry(self, serial):
+        """Return the latest MQTT telemetry for a serial, or ``None``."""
+        if self.realtime is None:
+            return None
+        return self.realtime.get_telemetry(serial)
+
+    @property
+    def realtime_connected(self):
+        """Return whether the real-time MQTT stream is connected."""
+        return self.realtime is not None and self.realtime.connected
+
+    def get_merged_device(self, serial, state):
+        """Return the REST device dict for a serial, overlaid with live telemetry.
+
+        Returns ``None`` when the device is not present in the given state group.
+        """
+        devices = getattr(self.data, state, [])
+        for dev in devices:
+            device_dict = _device_to_dict(dev)
+            if device_dict.get("serial_number") == serial:
+                merged = dict(device_dict)
+                if self.realtime_enabled:
+                    _overlay_mqtt(merged, self.get_telemetry(serial))
+                return merged
+        return None
 
 class CraftSensor(SensorEntity):
     """Base class for MiniBrew sensors."""
@@ -211,13 +294,8 @@ class CraftSensor(SensorEntity):
         self.async_on_remove(self.coordinator.async_add_listener(self.async_write_ha_state))
 
     def _get_latest_device(self):
-        """Get the latest device data from the coordinator."""
-        devices = getattr(self.coordinator.data, self.device_type, [])
-        for dev in devices:
-            device_dict = _device_to_dict(dev)
-            if device_dict.get("serial_number") == self.device_id:
-                return device_dict
-        return None
+        """Get the latest device data (REST overlaid with live telemetry)."""
+        return self.coordinator.get_merged_device(self.device_id, self.device_type)
 
 class CraftSensorBrewStageSensor(CraftSensor):
     """Sensor for the current brew stage of the Craft device."""
@@ -434,17 +512,18 @@ class CraftUserActionRequiredSensor(CraftSensor):
 
 
 class CraftNextActionDateTimeSensor(CraftSensor):
-    """Sensor for the remaining time until the next required action."""
+    """Sensor for the actual timestamp of the next required action."""
 
     _attr_translation_key = "next_action_time_remaining"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
     def native_value(self):
-        """Return a human-readable remaining time for the next required action."""
+        """Return the actual next-action timestamp (MQTT when realtime, else REST)."""
         device = self._get_latest_device()
         if not device:
             return None
-        return _format_remaining_time(device.get("process_estimate_remaining"))
+        return _coerce_timestamp(device.get("process_estimate_remaining"))
 
     @property
     def entity_category(self):
@@ -619,13 +698,8 @@ class KegSensor(SensorEntity):
         self.async_on_remove(self.coordinator.async_add_listener(self.async_write_ha_state))
 
     def _get_latest_device(self):
-        """Get the latest device data from the coordinator."""
-        devices = getattr(self.coordinator.data, self.device_type, [])
-        for dev in devices:
-            device_dict = _device_to_dict(dev)
-            if device_dict.get("serial_number") == self.device_id:
-                return device_dict
-        return None
+        """Get the latest device data (REST overlaid with live telemetry)."""
+        return self.coordinator.get_merged_device(self.device_id, self.device_type)
 
 class KegCurrentTemperatureSensor(KegSensor):
     """Sensor for the current temperature of the Keg device."""
@@ -953,17 +1027,18 @@ class KegActionRequiredSensor(KegSensor):
 
 
 class KegNextActionDateTimeSensor(KegSensor):
-    """Sensor for the remaining time until the next required action."""
+    """Sensor for the actual timestamp of the next required action."""
 
     _attr_translation_key = "next_action_time_remaining"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
     def native_value(self):
-        """Return a human-readable remaining time for the next required action."""
+        """Return the actual next-action timestamp (MQTT when realtime, else REST)."""
         device = self._get_latest_device()
         if not device:
             return None
-        return _format_remaining_time(device.get("process_estimate_remaining"))
+        return _coerce_timestamp(device.get("process_estimate_remaining"))
 
     @property
     def entity_category(self):
@@ -979,3 +1054,65 @@ class KegNextActionDateTimeSensor(KegSensor):
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_next_action_time_remaining"
+
+
+class CraftWifiSignalSensor(CraftSensor):
+    """Sensor for the Wi-Fi signal strength of the Craft device (MQTT only)."""
+
+    _attr_translation_key = "wifi_signal"
+    _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
+    _attr_native_unit_of_measurement = "dBm"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self):
+        """Return the Wi-Fi RSSI in dBm from the latest telemetry."""
+        telemetry = self.coordinator.get_telemetry(self.device_id)
+        return telemetry.wifi_rssi_dbm if telemetry else None
+
+    @property
+    def available(self):
+        """Return True once real-time telemetry with an RSSI has arrived."""
+        telemetry = self.coordinator.get_telemetry(self.device_id)
+        return telemetry is not None and telemetry.wifi_rssi_dbm is not None
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:wifi"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_wifi_signal"
+
+
+class KegWifiSignalSensor(KegSensor):
+    """Sensor for the Wi-Fi signal strength of the Keg device (MQTT only)."""
+
+    _attr_translation_key = "wifi_signal"
+    _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
+    _attr_native_unit_of_measurement = "dBm"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self):
+        """Return the Wi-Fi RSSI in dBm from the latest telemetry."""
+        telemetry = self.coordinator.get_telemetry(self.device_id)
+        return telemetry.wifi_rssi_dbm if telemetry else None
+
+    @property
+    def available(self):
+        """Return True once real-time telemetry with an RSSI has arrived."""
+        telemetry = self.coordinator.get_telemetry(self.device_id)
+        return telemetry is not None and telemetry.wifi_rssi_dbm is not None
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:wifi"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_wifi_signal"

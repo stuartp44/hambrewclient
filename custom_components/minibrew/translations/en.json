@@ -23,9 +23,11 @@
     "step": {
       "init": {
         "title": "MiniBrew Options",
-        "description": "Configure how often the integration updates data from your MiniBrew devices.",
+        "description": "Configure how the integration updates data from your MiniBrew devices. Enable real-time updates to stream live telemetry over MQTT instead of frequent polling.",
         "data": {
-          "refresh_interval": "Update interval (seconds)"
+          "enable_realtime": "Enable real-time updates (MQTT)",
+          "refresh_interval": "Polling update interval (seconds)",
+          "realtime_poll_interval": "Real-time discovery interval (seconds)"
         }
       }
     }
@@ -64,7 +66,7 @@
         }
       },
       "next_action_time_remaining": {
-        "name": "Next action remaining time"
+        "name": "Next action"
       },
       "current_stage": {
         "name": "Current stage",
@@ -97,6 +99,9 @@
       },
       "beer_name": {
         "name": "Beer name"
+      },
+      "wifi_signal": {
+        "name": "WiFi signal"
       }
     }
   }

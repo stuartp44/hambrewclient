@@ -1,2 +1,12 @@
 DOMAIN = "minibrew"
 MANUFACTURER = "MiniBrew"
+
+# Options
+CONF_REFRESH_INTERVAL = "refresh_interval"
+CONF_ENABLE_REALTIME = "enable_realtime"
+CONF_REALTIME_POLL_INTERVAL = "realtime_poll_interval"
+
+# Defaults
+DEFAULT_REFRESH_INTERVAL = 60
+DEFAULT_ENABLE_REALTIME = False
+DEFAULT_REALTIME_POLL_INTERVAL = 300
