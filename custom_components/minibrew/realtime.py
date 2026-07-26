@@ -22,6 +22,7 @@ _TELEMETRY_TO_DEVICE_KEY = {
     "target_temperature": "target_temp",
     "user_action": "user_action",
     "next_action_at": "process_estimate_remaining",
+    "seconds_until_next_action": "process_estimate_remaining_seconds",
 }
 
 

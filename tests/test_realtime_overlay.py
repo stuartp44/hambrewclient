@@ -22,6 +22,7 @@ def _telemetry(**kwargs):
         "target_temperature": None,
         "user_action": None,
         "next_action_at": None,
+        "seconds_until_next_action": None,
     }
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -66,6 +67,12 @@ def test_user_action_zero_is_applied_not_skipped():
     device = {"user_action": 5}
     realtime.overlay_mqtt(device, _telemetry(user_action=0))
     assert device["user_action"] == 0
+
+
+def test_seconds_until_next_action_maps_to_remaining_seconds():
+    device = {"process_estimate_remaining_seconds": 1200}
+    realtime.overlay_mqtt(device, _telemetry(seconds_until_next_action=420))
+    assert device["process_estimate_remaining_seconds"] == 420
 
 
 if __name__ == "__main__":

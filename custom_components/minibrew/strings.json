@@ -100,8 +100,14 @@
       "beer_name": {
         "name": "Beer name"
       },
-      "wifi_signal": {
-        "name": "WiFi signal"
+      "temp_control_power": {
+        "name": "Temp control power"
+      },
+      "peltier_fan_power": {
+        "name": "Peltier fan power"
+      },
+      "esp_core_temp": {
+        "name": "ESP core temperature"
       }
     }
   }

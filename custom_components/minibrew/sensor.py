@@ -2,10 +2,10 @@ import logging
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta, timezone
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from pymbrewclient import Device
+from pymbrewclient import Device, SensorType
 
 from .const import (
     CONF_ENABLE_REALTIME,
@@ -87,6 +87,18 @@ def _format_duration_seconds(value):
     minutes, seconds = divmod(remainder, 60)
     return f"{hours}:{minutes:02d}:{seconds:02d}"
 
+
+def _telemetry_sensor_value(coordinator, serial, sensor_type: SensorType, *, hide_zero: bool = False):
+    """Return a typed measurement from the latest telemetry for a given serial."""
+    telemetry = coordinator.get_telemetry(serial)
+    if telemetry is None:
+        return None
+
+    value = telemetry.sensor(sensor_type)
+    if hide_zero and value == 0.0:
+        return None
+    return value
+
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up MiniBrew sensors from a config entry."""
     store = hass.data[DOMAIN][config_entry.entry_id]
@@ -144,7 +156,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     new_sensors.append(CraftUserActionRequiredSensor(coordinator, device, state))
                     new_sensors.append(CraftNextActionDateTimeSensor(coordinator, device, state))
                     if coordinator.realtime_enabled:
-                        new_sensors.append(CraftWifiSignalSensor(coordinator, device, state))
+                        new_sensors.append(CraftTempControlPowerSensor(coordinator, device, state))
+                        new_sensors.append(CraftPeltierFanPowerSensor(coordinator, device, state))
+                        new_sensors.append(CraftEspCoreTempSensor(coordinator, device, state))
                 # Add sensors for Keg devices
                 elif device.device_type == 1:  # Keg device
                     new_sensors.append(KegCurrentTemperatureSensor(coordinator, device, state))
@@ -158,7 +172,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     new_sensors.append(KegActionRequiredSensor(coordinator, device, state))
                     new_sensors.append(KegNextActionDateTimeSensor(coordinator, device, state))
                     if coordinator.realtime_enabled:
-                        new_sensors.append(KegWifiSignalSensor(coordinator, device, state))
+                        new_sensors.append(KegTempControlPowerSensor(coordinator, device, state))
+                        new_sensors.append(KegPeltierFanPowerSensor(coordinator, device, state))
+                        new_sensors.append(KegEspCoreTempSensor(coordinator, device, state))
                 # Mark the device as added
                 added_devices.add(serial_number)
 
@@ -1056,63 +1072,187 @@ class KegNextActionDateTimeSensor(KegSensor):
         return f"{self.device_id}_next_action_time_remaining"
 
 
-class CraftWifiSignalSensor(CraftSensor):
-    """Sensor for the Wi-Fi signal strength of the Craft device (MQTT only)."""
+class CraftTempControlPowerSensor(CraftSensor):
+    """Sensor for the temperature-control (Peltier) power of the Craft device (MQTT only)."""
 
-    _attr_translation_key = "wifi_signal"
-    _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
-    _attr_native_unit_of_measurement = "dBm"
+    _attr_translation_key = "temp_control_power"
+    _attr_native_unit_of_measurement = "%"
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self):
-        """Return the Wi-Fi RSSI in dBm from the latest telemetry."""
+        """Return the temperature-control power (signed %, negative = cooling)."""
         telemetry = self.coordinator.get_telemetry(self.device_id)
-        return telemetry.wifi_rssi_dbm if telemetry else None
+        return telemetry.temp_control_power if telemetry else None
 
     @property
     def available(self):
-        """Return True once real-time telemetry with an RSSI has arrived."""
+        """Return True once real-time telemetry with a control-power reading has arrived."""
         telemetry = self.coordinator.get_telemetry(self.device_id)
-        return telemetry is not None and telemetry.wifi_rssi_dbm is not None
+        return telemetry is not None and telemetry.temp_control_power is not None
 
     @property
     def icon(self):
         """Return the icon for the sensor."""
-        return "mdi:wifi"
+        return "mdi:snowflake-thermometer"
 
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_wifi_signal"
+        return f"{self.device_id}_temp_control_power"
 
 
-class KegWifiSignalSensor(KegSensor):
-    """Sensor for the Wi-Fi signal strength of the Keg device (MQTT only)."""
+class KegTempControlPowerSensor(KegSensor):
+    """Sensor for the temperature-control (Peltier) power of the Keg device (MQTT only)."""
 
-    _attr_translation_key = "wifi_signal"
-    _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
-    _attr_native_unit_of_measurement = "dBm"
+    _attr_translation_key = "temp_control_power"
+    _attr_native_unit_of_measurement = "%"
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self):
-        """Return the Wi-Fi RSSI in dBm from the latest telemetry."""
+        """Return the temperature-control power (signed %, negative = cooling)."""
         telemetry = self.coordinator.get_telemetry(self.device_id)
-        return telemetry.wifi_rssi_dbm if telemetry else None
+        return telemetry.temp_control_power if telemetry else None
 
     @property
     def available(self):
-        """Return True once real-time telemetry with an RSSI has arrived."""
+        """Return True once real-time telemetry with a control-power reading has arrived."""
         telemetry = self.coordinator.get_telemetry(self.device_id)
-        return telemetry is not None and telemetry.wifi_rssi_dbm is not None
+        return telemetry is not None and telemetry.temp_control_power is not None
 
     @property
     def icon(self):
         """Return the icon for the sensor."""
-        return "mdi:wifi"
+        return "mdi:snowflake-thermometer"
 
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_wifi_signal"
+        return f"{self.device_id}_temp_control_power"
+
+
+class CraftPeltierFanPowerSensor(CraftSensor):
+    """Sensor for the Peltier fan power of the Craft device (MQTT only)."""
+
+    _attr_translation_key = "peltier_fan_power"
+    _attr_native_unit_of_measurement = "%"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self):
+        """Return Peltier fan power as a percentage."""
+        return _telemetry_sensor_value(
+            self.coordinator, self.device_id, SensorType.PELTIER_FAN_POWER, hide_zero=True
+        )
+
+    @property
+    def available(self):
+        """Return True when a non-zero fan power telemetry value has arrived."""
+        return self.native_value is not None
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:fan"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_peltier_fan_power"
+
+
+class KegPeltierFanPowerSensor(KegSensor):
+    """Sensor for the Peltier fan power of the Keg device (MQTT only)."""
+
+    _attr_translation_key = "peltier_fan_power"
+    _attr_native_unit_of_measurement = "%"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self):
+        """Return Peltier fan power as a percentage."""
+        return _telemetry_sensor_value(
+            self.coordinator, self.device_id, SensorType.PELTIER_FAN_POWER, hide_zero=True
+        )
+
+    @property
+    def available(self):
+        """Return True when a non-zero fan power telemetry value has arrived."""
+        return self.native_value is not None
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:fan"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_peltier_fan_power"
+
+
+class CraftEspCoreTempSensor(CraftSensor):
+    """Sensor for ESP core temperature on the Craft device (MQTT only)."""
+
+    _attr_translation_key = "esp_core_temp"
+    _attr_native_unit_of_measurement = "°C"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self):
+        """Return ESP core temperature in Celsius."""
+        return _telemetry_sensor_value(
+            self.coordinator, self.device_id, SensorType.ESP_CORE_TEMP, hide_zero=True
+        )
+
+    @property
+    def available(self):
+        """Return True once an ESP core temperature reading has arrived."""
+        return self.native_value is not None
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:chip"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_esp_core_temp"
+
+
+class KegEspCoreTempSensor(KegSensor):
+    """Sensor for ESP core temperature on the Keg device (MQTT only)."""
+
+    _attr_translation_key = "esp_core_temp"
+    _attr_native_unit_of_measurement = "°C"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self):
+        """Return ESP core temperature in Celsius."""
+        return _telemetry_sensor_value(
+            self.coordinator, self.device_id, SensorType.ESP_CORE_TEMP, hide_zero=True
+        )
+
+    @property
+    def available(self):
+        """Return True once an ESP core temperature reading has arrived."""
+        return self.native_value is not None
+
+    @property
+    def icon(self):
+        """Return the icon for the sensor."""
+        return "mdi:chip"
+
+    @property
+    def unique_id(self):
+        """Return the unique ID of the sensor."""
+        return f"{self.device_id}_esp_core_temp"
