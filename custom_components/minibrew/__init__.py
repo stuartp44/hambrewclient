@@ -7,6 +7,8 @@ from pymbrewclient import BreweryClient
 
 
 _LOGGER = logging.getLogger(__name__)
+_DISPLAY_TITLE = "MiniBrew Pro"
+_LEGACY_TITLES = {"Minibrew", "Minibrew Pro", "MiniBrew"}
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -17,6 +19,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up Minibrew from a config entry."""
+    if config_entry.title in _LEGACY_TITLES:
+        hass.config_entries.async_update_entry(config_entry, title=_DISPLAY_TITLE)
     minibrew_username = config_entry.data["username"]
     minibrew_password = config_entry.data["password"]
 

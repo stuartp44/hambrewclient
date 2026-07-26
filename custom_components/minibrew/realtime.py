@@ -11,6 +11,7 @@ back onto the loop with ``hass.loop.call_soon_threadsafe``.
 
 import logging
 import threading
+from datetime import datetime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,12 +19,52 @@ _LOGGER = logging.getLogger(__name__)
 # sensors already read. Keeping it here (with no Home Assistant imports) lets the
 # mapping be unit-tested without a running HA instance.
 _TELEMETRY_TO_DEVICE_KEY = {
+    "current_state": "current_state",
+    "process_type": "process_type",
+    "process_state": "process_state",
     "current_temperature": "current_temp",
     "target_temperature": "target_temp",
     "user_action": "user_action",
+    "process_phase": "process_phase",
+    "session_id": "active_session",
     "next_action_at": "process_estimate_remaining",
     "seconds_until_next_action": "process_estimate_remaining_seconds",
 }
+
+# Fingerprinting drives listener notifications. Exclude countdown fields that
+# can tick every second without changing user-visible state.
+_FINGERPRINT_ATTRS = tuple(
+    attr for attr in _TELEMETRY_TO_DEVICE_KEY if attr != "seconds_until_next_action"
+)
+
+def _normalize_fingerprint_value(value, *, trim_to_minute=False):
+    """Normalize values for stable change detection."""
+    if isinstance(value, datetime):
+        if trim_to_minute:
+            return value.replace(second=0, microsecond=0)
+        return value.replace(microsecond=0)
+    return value
+
+
+def _telemetry_fingerprint(msg):
+    """Return the effective telemetry state used by entities."""
+    attrs = {}
+    for attr in _FINGERPRINT_ATTRS:
+        attrs[attr] = _normalize_fingerprint_value(
+            getattr(msg, attr, None),
+            trim_to_minute=(attr == "next_action_at"),
+        )
+    attrs["temp_control_power"] = _normalize_fingerprint_value(
+        getattr(msg, "temp_control_power", None)
+    )
+    measurements = getattr(msg, "measurements", None)
+    if isinstance(measurements, dict):
+        attrs["measurements"] = tuple(
+            sorted((str(key), _normalize_fingerprint_value(val)) for key, val in measurements.items())
+        )
+    else:
+        attrs["measurements"] = None
+    return tuple(sorted(attrs.items()))
 
 
 def overlay_mqtt(device: dict, telemetry) -> None:
@@ -37,6 +78,12 @@ def overlay_mqtt(device: dict, telemetry) -> None:
     for attr, device_key in _TELEMETRY_TO_DEVICE_KEY.items():
         value = getattr(telemetry, attr, None)
         if value is not None:
+            if attr == "user_action":
+                existing = device.get(device_key)
+                # Some MQTT payloads report 0 when action context is absent.
+                # Preserve a non-zero REST action in that case.
+                if value == 0 and isinstance(existing, (int, float)) and existing > 0:
+                    continue
             device[device_key] = value
 
 
@@ -56,6 +103,8 @@ class MiniBrewRealtimeManager:
         self._client = client
         self._mqtt = None
         self._telemetry = {}
+        self._fingerprints = {}
+        self._last_update = {}
         self._telemetry_lock = threading.Lock()
         self._subscribed = set()
         self._connected = False
@@ -103,6 +152,11 @@ class MiniBrewRealtimeManager:
         with self._telemetry_lock:
             return self._telemetry.get(serial)
 
+    def get_last_update(self, serial):
+        """Return timestamp of last meaningful telemetry update for a serial."""
+        with self._telemetry_lock:
+            return self._last_update.get(serial)
+
     @property
     def connected(self):
         """Return whether the MQTT stream is currently connected."""
@@ -124,12 +178,28 @@ class MiniBrewRealtimeManager:
     # ------------------------------------------------------------------
 
     def _handle_device_log(self, msg):
-        """Store telemetry and notify coordinator listeners (paho thread)."""
+        """Store telemetry and notify listeners only on meaningful changes."""
         serial = msg.device_uuid
         if not serial:
             return
+
+        fingerprint = _telemetry_fingerprint(msg)
         with self._telemetry_lock:
+            if self._fingerprints.get(serial) == fingerprint:
+                return
             self._telemetry[serial] = msg
+            self._fingerprints[serial] = fingerprint
+            self._last_update[serial] = getattr(msg, "received_at", None)
+
+        _LOGGER.debug(
+            "MiniBrew realtime: message from %s (session=%s phase=%s target=%s current=%s action=%s)",
+            serial,
+            getattr(msg, "session_id", None),
+            getattr(msg, "process_phase", None),
+            getattr(msg, "target_temperature", None),
+            getattr(msg, "current_temperature", None),
+            getattr(msg, "user_action", None),
+        )
         self.hass.loop.call_soon_threadsafe(self.coordinator.async_update_listeners)
 
     def _handle_connected(self):
