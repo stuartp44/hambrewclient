@@ -8,24 +8,34 @@
           "username": "Username",
           "password": "Password"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate MiniBrew",
+        "description": "Your MiniBrew credentials are no longer valid. Enter updated credentials.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
       }
     },
     "error": {
+      "invalid_auth": "Invalid credentials. Please check your username and password.",
       "cannot_connect": "Failed to connect to MiniBrew. Please check your credentials and try again.",
       "no_devices_found": "No MiniBrew devices found in your account.",
       "unknown_error": "An unexpected error occurred. Please try again."
     },
     "abort": {
-      "already_configured": "This MiniBrew account is already configured."
+      "already_configured": "This MiniBrew account is already configured.",
+      "reauth_successful": "Reauthentication successful."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "MiniBrew Options",
-        "description": "Configure how often the integration updates data from your MiniBrew devices.",
+        "description": "Configure how the integration updates data from your MiniBrew devices. Enable real-time updates to stream live telemetry over MQTT instead of frequent polling.",
         "data": {
-          "refresh_interval": "Update interval (seconds)"
+          "realtime_poll_interval": "Real-time discovery interval (seconds)"
         }
       }
     }
@@ -48,6 +58,9 @@
           "offline": "Offline"
         }
       },
+      "last_time_online": {
+        "name": "Last time online"
+      },
       "update_status": {
         "name": "Update status",
         "state": {
@@ -63,6 +76,18 @@
           "unknown": "Unknown"
         }
       },
+      "next_action_time_remaining": {
+        "name": "Next action",
+        "state": {
+          "now": "Now"
+        }
+      },
+      "session_id": {
+        "name": "Session ID"
+      },
+      "session_started": {
+        "name": "Brew session started"
+      },
       "current_stage": {
         "name": "Current stage",
         "state": {
@@ -73,8 +98,8 @@
           "unknown": "Unknown"
         }
       },
-      "time_in_stage": {
-        "name": "Time in stage"
+      "process_phase": {
+        "name": "Process phase"
       },
       "needs_cleaning": {
         "name": "Needs cleaning",
@@ -91,6 +116,30 @@
       },
       "beer_name": {
         "name": "Beer name"
+      },
+      "temp_control_power": {
+        "name": "Peltier power"
+      },
+      "peltier_mode": {
+        "name": "Peltier mode",
+        "state": {
+          "cooling": "Cooling",
+          "warming": "Warming",
+          "idle": "Idle"
+        }
+      },
+      "peltier_fan_power": {
+        "name": "Fan duty"
+      },
+      "esp_core_temp": {
+        "name": "ESP32 core temperature"
+      },
+      "button": {
+        "name": "Button",
+        "state": {
+          "on": "On",
+          "off": "Off"
+        }
       }
     }
   }

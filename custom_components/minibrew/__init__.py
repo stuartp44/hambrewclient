@@ -7,6 +7,8 @@ from pymbrewclient import BreweryClient
 
 
 _LOGGER = logging.getLogger(__name__)
+_DISPLAY_TITLE = "MiniBrew Pro"
+_LEGACY_TITLES = {"Minibrew", "Minibrew Pro", "MiniBrew"}
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -17,6 +19,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up Minibrew from a config entry."""
+    if config_entry.title in _LEGACY_TITLES:
+        hass.config_entries.async_update_entry(config_entry, title=_DISPLAY_TITLE)
     minibrew_username = config_entry.data["username"]
     minibrew_password = config_entry.data["password"]
 
@@ -24,15 +28,31 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         minibrew_client = BreweryClient(username=minibrew_username, password=minibrew_password)
         _LOGGER.debug(f"Minibrew initialized")
         hass.data.setdefault(DOMAIN, {})
-        hass.data[DOMAIN][config_entry.entry_id] = minibrew_client
+        hass.data[DOMAIN][config_entry.entry_id] = {"client": minibrew_client}
     except Exception as ex:
         _LOGGER.error("Could not connect to Minibrew: %s", ex)
         raise ConfigEntryNotReady from ex
 
+    # Reload the entry when options change (e.g. toggling real-time updates).
+    config_entry.async_on_unload(config_entry.add_update_listener(async_update_options))
+
     await hass.config_entries.async_forward_entry_setups(config_entry, ["sensor"])
     return True
 
+async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+    """Reload the config entry when its options are updated."""
+    await hass.config_entries.async_reload(config_entry.entry_id)
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    # Stop the real-time MQTT stream, if one was started.
+    store = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if store:
+        coordinator = store.get("coordinator")
+        if coordinator is not None and getattr(coordinator, "realtime", None) is not None:
+            await coordinator.realtime.async_stop()
+
     unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+    if unload_ok:
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     return unload_ok

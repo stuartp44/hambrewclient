@@ -6,7 +6,7 @@ A Home Assistant custom component for integrating MiniBrew Craft and Keg devices
 
 ## Overview
 
-This integration allows you to monitor and control your MiniBrew brewing devices through Home Assistant. It supports both MiniBrew Craft (brewing devices) and MiniBrew Keg (dispensing devices), providing real-time monitoring of temperatures, brew stages, and device status.
+This integration allows you to monitor and control your MiniBrew brewing devices through Home Assistant. It supports both MiniBrew Craft (brewing devices) and MiniBrew Keg (dispensing devices), providing real-time monitoring of temperatures, process phases, and device status.
 
 **IMPORTANT:** A MiniBrew Pro subscription is required for this integration to function. The integration uses the MiniBrew API which requires an active Pro subscription to access device data and control features.
 
@@ -15,23 +15,35 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 ### Craft Device Sensors
 - **Current Temperature** - Real-time temperature monitoring
 - **Target Temperature** - Configured target temperature
-- **Brew Stage** - Current brewing stage
 - **Time in Stage** - Duration in current brewing stage
 - **Current Stage** - Active stage information
+- **Process Phase** - Current phase details from runtime telemetry
 - **Online Status** - Device connectivity status
+- **Last Time Online** - Timestamp of the last known online heartbeat (diagnostic)
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **User Action Required** - Notifications for required user actions
+- **Next Action** - Timestamp for the next required user action
+- **Session ID** - Active brew session identifier (diagnostic)
+- **Brew Session Started** - Session start timestamp from MiniBrew session metadata (diagnostic)
+- **ESP Core Temperature** *(real-time MQTT)* - Internal controller temperature
 
 ### Keg Device Sensors
 - **Current Temperature** - Real-time keg temperature
 - **Target Temperature** - Configured serving temperature
-- **Beer Name** - Currently loaded beer name
-- **Beer Style** - Currently loaded beer style
+- **Beer Name** - Currently loaded beer name (shows `Custom Fermentation` in custom fermentation mode, including inferred fermenting/primary sessions with unknown beer metadata)
+- **Beer Style** - Currently loaded beer style (`N/A` in custom fermentation mode)
 - **Online Status** - Device connectivity status
+- **Last Time Online** - Timestamp of the last known online heartbeat (diagnostic)
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **Action Required** - Notifications for required user actions
+- **Next Action** - Timestamp for the next required user action
+- **Session ID** - Active brew session identifier (diagnostic)
+- **Brew Session Started** - Session start timestamp from MiniBrew session metadata (diagnostic)
+- **Temp Control Power** *(real-time MQTT)* - Peltier heating/cooling power (%)
+- **Fan Duty** *(real-time MQTT)* - Peltier fan output (%)
+- **ESP Core Temperature** *(real-time MQTT)* - Internal controller temperature
 
 ## Installation
 
@@ -67,7 +79,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 
 After adding the integration, you can configure additional options:
 
-- **Refresh Interval**: How often to poll the MiniBrew API for updates (default: 60 seconds)
+- **Real-time discovery interval**: How often to refresh discovery and fallback data from REST while MQTT drives live telemetry (default: 300 seconds)
 
 To access options:
 1. Go to **Settings** → **Devices & Services**
@@ -79,7 +91,7 @@ To access options:
 - Home Assistant 2023.1 or newer
 - MiniBrew account with registered devices
 - **MiniBrew Pro subscription** (required for API access)
-- [`pymbrewclient>=1.0.10`](https://github.com/stuartp44/pymbrewclient) (automatically installed)
+- [`pymbrewclient>=1.11.0`](https://github.com/stuartp44/pymbrewclient/releases/tag/v1.11.0) (automatically installed)
 
 ## Dependencies
 
