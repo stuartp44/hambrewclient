@@ -8,6 +8,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.helpers.entity import EntityCategory
 
 from .const import DOMAIN
+from .sensor import _device_to_dict
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -16,10 +17,21 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up MiniBrew binary sensors from a config entry."""
     store = hass.data[DOMAIN][config_entry.entry_id]
     coordinator = store.get("coordinator")
-    if coordinator is None:
+    if coordinator is None or coordinator.data is None:
         return
 
-    async_add_entities([MiniBrewRealtimeConnectedSensor(coordinator, config_entry)])
+    entities = []
+    for devices in coordinator.data.__dict__.values():
+        for device_data in devices:
+            device_dict = _device_to_dict(device_data)
+            serial = device_dict.get("serial_number")
+            if not serial:
+                continue
+            entities.append(
+                MiniBrewRealtimeConnectedSensor(coordinator, config_entry, device_dict)
+            )
+
+    async_add_entities(entities)
 
 
 class MiniBrewRealtimeConnectedSensor(BinarySensorEntity):
@@ -31,18 +43,15 @@ class MiniBrewRealtimeConnectedSensor(BinarySensorEntity):
     _attr_entity_registry_enabled_default = False
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator, config_entry):
+    def __init__(self, coordinator, config_entry, device_dict):
         self._coordinator = coordinator
-        self._config_entry = config_entry
-        self._attr_unique_id = f"{config_entry.entry_id}_realtime_connected"
-
-    @property
-    def device_info(self):
-        """Attach to the MiniBrew hub device (the integration entry itself)."""
-        return {
-            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
-            "name": "MiniBrew",
+        serial = device_dict["serial_number"]
+        self._attr_unique_id = f"{serial}_realtime_connected"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, serial)},
+            "name": device_dict.get("title", serial),
             "manufacturer": "MiniBrew",
+            "serial_number": serial,
         }
 
     @property
@@ -55,7 +64,7 @@ class MiniBrewRealtimeConnectedSensor(BinarySensorEntity):
 
     @property
     def available(self):
-        """Always available — even when disconnected we can report the state."""
+        """Always available — disconnected is a valid reportable state."""
         return True
 
     async def async_added_to_hass(self):
