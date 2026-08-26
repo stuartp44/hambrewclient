@@ -800,8 +800,8 @@ class CraftSensor(SensorEntity):
 
     @property
     def available(self):
-        """Return if the sensor is available."""
-        return self.coordinator.last_update_success
+        """Return True when the coordinator has data and the device is present."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     async def async_update(self):
         """Update the sensor."""
@@ -851,12 +851,6 @@ class CraftSensorCurrentTemperatureSensor(CraftSensor):
         return "mdi:thermometer"
 
     @property
-    def available(self):
-        """Return True if the sensor has data."""
-        device = self._get_latest_device()
-        return device is not None and device.get("current_temp") is not None
-
-    @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_current_temperature"
@@ -893,12 +887,6 @@ class CraftSensorTargetTemperatureSensor(CraftSensor):
         return "mdi:thermometer"
 
     @property
-    def available(self):
-        """Return True if the sensor has data."""
-        device = self._get_latest_device()
-        return device is not None and device.get("target_temp") is not None
-
-    @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_target_temperature"
@@ -928,13 +916,6 @@ class CraftBeerStyleSensor(CraftSensor):
             value = value.strip()
         return value or None
 
-    @property
-    def available(self):
-        """Return True when beer style is known."""
-        return self.native_value is not None
-
-
-    
     @property
     def icon(self):
         """Return the icon for the sensor."""
@@ -973,13 +954,6 @@ class CraftBeerNameSensor(CraftSensor):
             value = value.strip()
         return value or None
 
-    @property
-    def available(self):
-        """Return True when beer name is known."""
-        return self.native_value is not None
-
-
-    
     @property
     def icon(self):
         """Return the icon for the sensor."""
@@ -1097,7 +1071,7 @@ class CraftSensorIsUpdatingSensor(CraftSensor):
     @property
     def available(self):
         """Return True when update status is known from the device payload."""
-        return self.native_value is not None
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def entity_category(self):
@@ -1182,12 +1156,6 @@ class CraftNextActionDateTimeSensor(CraftSensor):
         return _next_action_state(device.get("process_estimate_remaining"))
 
     @property
-    def available(self):
-        """Return True when a next action timestamp is available."""
-        return self.native_value is not None
-
-
-    @property
     def entity_category(self):
         """Return the entity category."""
         return EntityCategory.DIAGNOSTIC
@@ -1222,11 +1190,6 @@ class CraftSessionIdSensor(CraftSensor):
             return None
         session_id, _ = _session_id_from_device_dict(device)
         return session_id
-
-    @property
-    def available(self):
-        """Return True when an active session is present."""
-        return self.native_value is not None
 
     @property
     def icon(self):
@@ -1270,11 +1233,6 @@ class CraftSessionStartedSensor(CraftSensor):
             self.coordinator._async_ensure_session_created(self.device_id, session_id)
         )
         return None
-
-    @property
-    def available(self):
-        """Return True when active session start is known."""
-        return self.native_value is not None
 
     @property
     def icon(self):
@@ -1334,12 +1292,6 @@ class CraftProcessPhaseSensor(CraftSensor):
     def native_value(self):
         """Return current process phase label from telemetry."""
         return _process_phase_display(self._get_latest_device())
-
-    @property
-    def available(self):
-        """Return True once process phase telemetry is available."""
-        device = self._get_latest_device()
-        return device is not None and device.get("process_phase") is not None
 
     @property
     def icon(self):
@@ -1414,8 +1366,8 @@ class KegSensor(SensorEntity):
     
     @property
     def available(self):
-        """Return if the sensor is available."""
-        return self.coordinator.last_update_success
+        """Return True when the coordinator has data and the device is present."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     async def async_update(self):
         """Update the sensor."""
@@ -1465,12 +1417,6 @@ class KegCurrentTemperatureSensor(KegSensor):
         return "mdi:thermometer"
 
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        device = self._get_latest_device()
-        return device is not None and device.get("current_temp") is not None
-
-    @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_{self.name}"
@@ -1506,12 +1452,6 @@ class KegTargetTemperatureSensor(KegSensor):
         return "mdi:thermometer"
 
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        device = self._get_latest_device()
-        return device is not None and device.get("target_temp") is not None
-
-    @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_{self.name}"
@@ -1543,12 +1483,6 @@ class KegBeerStyleSensor(KegSensor):
         if isinstance(value, str):
             value = value.strip()
         return value or None
-
-    @property
-    def available(self):
-        """Return True when beer style is known."""
-        return self.native_value is not None
-
 
     @property
     def icon(self):
@@ -1588,12 +1522,6 @@ class KegBeerNameSensor(KegSensor):
         if isinstance(value, str):
             value = value.strip()
         return value or None
-
-    @property
-    def available(self):
-        """Return True when beer name is known."""
-        return self.native_value is not None
-
 
     @property
     def icon(self):
@@ -1650,12 +1578,6 @@ class KegProcessPhaseSensor(KegSensor):
     def native_value(self):
         """Return current process phase label from telemetry."""
         return _process_phase_display(self._get_latest_device())
-
-    @property
-    def available(self):
-        """Return True once process phase telemetry is available."""
-        device = self._get_latest_device()
-        return device is not None and device.get("process_phase") is not None
 
     @property
     def icon(self):
@@ -1768,11 +1690,6 @@ class KegIsUpdatingSensor(KegSensor):
         return "updating" if device.get("updating") else "not_updating"
 
     
-    @property
-    def available(self):
-        """Return True when update status is known from the device payload."""
-        return self.native_value is not None
-
     @property
     def entity_category(self):
         """Return the entity category (diagnostic)."""
@@ -1888,12 +1805,6 @@ class KegNextActionDateTimeSensor(KegSensor):
         return _next_action_state(device.get("process_estimate_remaining"))
 
     @property
-    def available(self):
-        """Return True when a next action timestamp is available."""
-        return self.native_value is not None
-
-
-    @property
     def entity_category(self):
         """Return the entity category (diagnostic)."""
         return EntityCategory.DIAGNOSTIC
@@ -1928,11 +1839,6 @@ class KegSessionIdSensor(KegSensor):
             return None
         session_id, _ = _session_id_from_device_dict(device)
         return session_id
-
-    @property
-    def available(self):
-        """Return True when an active session is present."""
-        return self.native_value is not None
 
     @property
     def icon(self):
@@ -1976,11 +1882,6 @@ class KegSessionStartedSensor(KegSensor):
             self.coordinator._async_ensure_session_created(self.device_id, session_id)
         )
         return None
-
-    @property
-    def available(self):
-        """Return True when active session start is known."""
-        return self.native_value is not None
 
     @property
     def icon(self):
@@ -2103,11 +2004,6 @@ class CraftPeltierFanPowerSensor(CraftSensor):
         return round(value) if value is not None else None
 
     @property
-    def available(self):
-        """Return True when a non-zero fan power telemetry value has arrived."""
-        return self.native_value is not None
-
-    @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:fan"
@@ -2144,11 +2040,6 @@ class KegPeltierFanPowerSensor(KegSensor):
             self.coordinator, self.device_id, SensorType.PELTIER_FAN_POWER, hide_zero=True
         )
         return round(value) if value is not None else None
-
-    @property
-    def available(self):
-        """Return True when a non-zero fan power telemetry value has arrived."""
-        return self.native_value is not None
 
     @property
     def icon(self):
@@ -2189,11 +2080,6 @@ class CraftEspCoreTempSensor(CraftSensor):
         )
 
     @property
-    def available(self):
-        """Return True once an ESP core temperature reading has arrived."""
-        return self.native_value is not None
-
-    @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:chip"
@@ -2232,11 +2118,6 @@ class KegEspCoreTempSensor(KegSensor):
         )
 
     @property
-    def available(self):
-        """Return True once an ESP core temperature reading has arrived."""
-        return self.native_value is not None
-
-    @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:chip"
@@ -2266,12 +2147,6 @@ class CraftButtonSensor(CraftSensor):
         """Return button telemetry value."""
         value = _telemetry_sensor_value(self.coordinator, self.device_id, SensorType.BUTTON)
         return _button_state(value)
-
-    
-    @property
-    def available(self):
-        """Return True once a button telemetry value has arrived."""
-        return self.native_value is not None
 
     
     @property
@@ -2306,12 +2181,6 @@ class KegButtonSensor(KegSensor):
         """Return button telemetry value."""
         value = _telemetry_sensor_value(self.coordinator, self.device_id, SensorType.BUTTON)
         return _button_state(value)
-
-    
-    @property
-    def available(self):
-        """Return True once a button telemetry value has arrived."""
-        return self.native_value is not None
 
     
     @property

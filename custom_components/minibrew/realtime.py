@@ -9,11 +9,16 @@ callbacks fire *off* the Home Assistant event loop. Every interaction with HA
 back onto the loop with ``hass.loop.call_soon_threadsafe``.
 """
 
+import asyncio
 import logging
 import threading
 from datetime import datetime
 
 _LOGGER = logging.getLogger(__name__)
+
+# Seconds to wait before attempting to reconnect after a disconnect or initial
+# connection failure.
+_RECONNECT_DELAY = 30
 
 # Maps ``DeviceLogMessage`` attribute -> the REST device-dict key the existing
 # sensors already read. Keeping it here (with no Home Assistant imports) lets the
@@ -108,14 +113,18 @@ class MiniBrewRealtimeManager:
         self._telemetry_lock = threading.Lock()
         self._subscribed = set()
         self._connected = False
+        self._reconnect_task = None
+        self._stopped = False
 
     async def async_start(self):
         """Create and connect the MQTT client (runs blocking I/O in executor)."""
+        self._stopped = False
         try:
             self._mqtt = await self.hass.async_add_executor_job(self._client.create_mqtt_client)
         except Exception as err:  # noqa: BLE001 - never break REST polling
             _LOGGER.warning("MiniBrew realtime: could not create MQTT client: %s", err)
             self._mqtt = None
+            self._schedule_reconnect()
             return
 
         self._mqtt.on_device_log(self._handle_device_log)
@@ -127,6 +136,7 @@ class MiniBrewRealtimeManager:
             await self.hass.async_add_executor_job(self._mqtt.connect)
         except Exception as err:  # noqa: BLE001 - never break REST polling
             _LOGGER.warning("MiniBrew realtime: could not connect to MQTT broker: %s", err)
+            self._schedule_reconnect()
 
     def async_ensure_subscribed(self, serials):
         """Subscribe to device-log topics for any not-yet-subscribed serials.
@@ -164,6 +174,10 @@ class MiniBrewRealtimeManager:
 
     async def async_stop(self):
         """Disconnect the MQTT client and stop its network thread."""
+        self._stopped = True
+        if self._reconnect_task is not None:
+            self._reconnect_task.cancel()
+            self._reconnect_task = None
         if self._mqtt is None:
             return
         mqtt, self._mqtt = self._mqtt, None
@@ -172,6 +186,37 @@ class MiniBrewRealtimeManager:
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("MiniBrew realtime: error during disconnect: %s", err)
         self._connected = False
+
+    def _schedule_reconnect(self):
+        """Schedule a reconnect attempt on the HA event loop (safe to call from any thread)."""
+        if self._stopped:
+            return
+
+        def _do_schedule():
+            if self._stopped:
+                return
+            if self._reconnect_task is not None and not self._reconnect_task.done():
+                return
+            _LOGGER.info(
+                "MiniBrew realtime: scheduling reconnect in %s seconds", _RECONNECT_DELAY
+            )
+            self._reconnect_task = self.hass.async_create_task(self._async_reconnect())
+
+        self.hass.loop.call_soon_threadsafe(_do_schedule)
+
+    async def _async_reconnect(self):
+        """Wait, then attempt to reconnect the MQTT stream."""
+        await asyncio.sleep(_RECONNECT_DELAY)
+        if self._stopped:
+            return
+        _LOGGER.info("MiniBrew realtime: attempting to reconnect…")
+        # Reset subscribed set so topics are re-subscribed after reconnect.
+        self._subscribed.clear()
+        await self.async_start()
+        # Re-subscribe to all known serials (coordinator data may have serials already).
+        from .sensor import _collect_serials  # local import to avoid circular dep at module level
+        if self.coordinator.data is not None:
+            self.async_ensure_subscribed(_collect_serials(self.coordinator))
 
     # ------------------------------------------------------------------
     # paho-thread callbacks — marshal HA work back onto the event loop
@@ -209,10 +254,11 @@ class MiniBrewRealtimeManager:
         self.hass.loop.call_soon_threadsafe(self.coordinator.async_update_listeners)
 
     def _handle_disconnected(self):
-        """Mark disconnected and refresh entity availability (paho thread)."""
+        """Mark disconnected, refresh entity availability, and schedule reconnect (paho thread)."""
         self._connected = False
-        _LOGGER.debug("MiniBrew realtime: MQTT disconnected")
+        _LOGGER.warning("MiniBrew realtime: MQTT disconnected — will retry in %s s", _RECONNECT_DELAY)
         self.hass.loop.call_soon_threadsafe(self.coordinator.async_update_listeners)
+        self._schedule_reconnect()
 
     def _handle_error(self, exc):
         """Log connection-level MQTT errors (paho thread). Token is never included."""
