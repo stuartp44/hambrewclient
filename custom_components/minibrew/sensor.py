@@ -587,15 +587,27 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             _LOGGER.debug("Fetching data from MiniBrew API...")
             data = await self.hass.async_add_executor_job(self.client.get_brewery_overview)
-            devices = await self.hass.async_add_executor_job(self.client.get_devices)
-            _merge_last_time_online_from_devices(data, devices)
-            await self._async_refresh_session_metadata(data)
-            _LOGGER.debug("Fetched MiniBrew overview: groups=%s active_sessions=%s", {k: len(v) for k, v in data.__dict__.items()}, sum(1 for session_id in self._active_session_by_serial.values() if session_id is not None))
         except Exception as err:
             if _is_auth_error(err):
                 raise ConfigEntryAuthFailed("MiniBrew credentials are invalid") from err
-            _LOGGER.error(f"Error fetching data: {err}")
-            raise UpdateFailed(f"Error fetching data: {err}")
+            _LOGGER.error("Error fetching brewery overview: %s", err)
+            raise UpdateFailed(f"Error fetching data: {err}") from err
+
+        try:
+            devices = await self.hass.async_add_executor_job(self.client.get_devices)
+            _merge_last_time_online_from_devices(data, devices)
+        except Exception as err:  # noqa: BLE001 - supplemental endpoint; don't fail the whole update
+            _LOGGER.warning("MiniBrew: could not fetch device list (last_time_online may be stale): %s", err)
+
+        try:
+            await self._async_refresh_session_metadata(data)
+        except Exception as err:
+            if _is_auth_error(err):
+                raise ConfigEntryAuthFailed("MiniBrew credentials are invalid") from err
+            _LOGGER.error("Error fetching data: %s", err)
+            raise UpdateFailed(f"Error fetching data: {err}") from err
+
+        _LOGGER.debug("Fetched MiniBrew overview: groups=%s active_sessions=%s", {k: len(v) for k, v in data.__dict__.items()}, sum(1 for session_id in self._active_session_by_serial.values() if session_id is not None))
 
         # Subscribe the MQTT stream to any newly discovered devices.
         if self.realtime is not None:
