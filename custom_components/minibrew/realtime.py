@@ -136,10 +136,10 @@ class MiniBrewRealtimeManager:
         self._mqtt.on_disconnected(self._handle_disconnected)
         self._mqtt.on_error(self._handle_error)
 
-        _LOGGER.warning("MiniBrew realtime: connecting to MQTT broker…")
+        _LOGGER.info("MiniBrew realtime: connecting to MQTT broker…")
         try:
             await self.hass.async_add_executor_job(self._mqtt.connect)
-            _LOGGER.warning("MiniBrew realtime: MQTT connect() returned (waiting for on_connected callback)")
+            _LOGGER.info("MiniBrew realtime: MQTT connect() returned (waiting for on_connected callback)")
         except Exception as err:  # noqa: BLE001 - never break REST polling
             _LOGGER.warning("MiniBrew realtime: could not connect to MQTT broker: %s", err)
             self._schedule_reconnect()
@@ -252,7 +252,7 @@ class MiniBrewRealtimeManager:
     def _handle_connected(self):
         """Mark connected, subscribe to all known serials, and refresh entity availability (paho thread)."""
         self._connected = True
-        _LOGGER.warning("MiniBrew realtime: MQTT connected")
+        _LOGGER.info("MiniBrew realtime: MQTT connected")
         # Subscribe here — this is the earliest safe point after the WS handshake completes.
         # Both initial connection and reconnects land here, so subscriptions are always set up.
         def _subscribe_and_notify():
