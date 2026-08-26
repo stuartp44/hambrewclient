@@ -117,8 +117,12 @@ class MiniBrewRealtimeManager:
         self._stopped = False
 
     async def async_start(self):
-        """Create and connect the MQTT client (runs blocking I/O in executor)."""
+        """Create and connect the MQTT client (initial entry point from HA setup)."""
         self._stopped = False
+        await self._async_do_connect()
+
+    async def _async_do_connect(self):
+        """Internal: create the MQTT client and connect. Called from async_start and reconnect."""
         try:
             self._mqtt = await self.hass.async_add_executor_job(self._client.create_mqtt_client)
         except Exception as err:  # noqa: BLE001 - never break REST polling
@@ -132,8 +136,10 @@ class MiniBrewRealtimeManager:
         self._mqtt.on_disconnected(self._handle_disconnected)
         self._mqtt.on_error(self._handle_error)
 
+        _LOGGER.warning("MiniBrew realtime: connecting to MQTT broker…")
         try:
             await self.hass.async_add_executor_job(self._mqtt.connect)
+            _LOGGER.warning("MiniBrew realtime: MQTT connect() returned (waiting for on_connected callback)")
         except Exception as err:  # noqa: BLE001 - never break REST polling
             _LOGGER.warning("MiniBrew realtime: could not connect to MQTT broker: %s", err)
             self._schedule_reconnect()
@@ -197,7 +203,7 @@ class MiniBrewRealtimeManager:
                 return
             if self._reconnect_task is not None and not self._reconnect_task.done():
                 return
-            _LOGGER.info(
+            _LOGGER.warning(
                 "MiniBrew realtime: scheduling reconnect in %s seconds", _RECONNECT_DELAY
             )
             self._reconnect_task = self.hass.async_create_task(self._async_reconnect())
@@ -209,14 +215,10 @@ class MiniBrewRealtimeManager:
         await asyncio.sleep(_RECONNECT_DELAY)
         if self._stopped:
             return
-        _LOGGER.info("MiniBrew realtime: attempting to reconnect…")
-        # Reset subscribed set so topics are re-subscribed after reconnect.
+        _LOGGER.warning("MiniBrew realtime: attempting to reconnect…")
+        # Reset subscribed set — _handle_connected will re-subscribe once the connection is up.
         self._subscribed.clear()
-        await self.async_start()
-        # Re-subscribe to all known serials (coordinator data may have serials already).
-        from .sensor import _collect_serials  # local import to avoid circular dep at module level
-        if self.coordinator.data is not None:
-            self.async_ensure_subscribed(_collect_serials(self.coordinator))
+        await self._async_do_connect()
 
     # ------------------------------------------------------------------
     # paho-thread callbacks — marshal HA work back onto the event loop
@@ -248,10 +250,17 @@ class MiniBrewRealtimeManager:
         self.hass.loop.call_soon_threadsafe(self.coordinator.async_update_listeners)
 
     def _handle_connected(self):
-        """Mark connected and refresh entity availability (paho thread)."""
+        """Mark connected, subscribe to all known serials, and refresh entity availability (paho thread)."""
         self._connected = True
-        _LOGGER.debug("MiniBrew realtime: MQTT connected")
-        self.hass.loop.call_soon_threadsafe(self.coordinator.async_update_listeners)
+        _LOGGER.warning("MiniBrew realtime: MQTT connected")
+        # Subscribe here — this is the earliest safe point after the WS handshake completes.
+        # Both initial connection and reconnects land here, so subscriptions are always set up.
+        def _subscribe_and_notify():
+            from .sensor import _collect_serials  # local import to avoid circular dep
+            if self.coordinator.data is not None:
+                self.async_ensure_subscribed(_collect_serials(self.coordinator))
+            self.coordinator.async_update_listeners()
+        self.hass.loop.call_soon_threadsafe(_subscribe_and_notify)
 
     def _handle_disconnected(self):
         """Mark disconnected, refresh entity availability, and schedule reconnect (paho thread)."""

@@ -178,29 +178,70 @@ def _session_started_from_session(session):
 
 
 def _next_action_state(value):
-    """Return a stable next-action timestamp for Home Assistant."""
+    """Return a stable next-action timestamp for Home Assistant.
+
+    - If the next action is in the future: truncate to the minute so
+      per-second server-side countdown recalculations don't cause state churn.
+    - If the next action is in the past or imminent (overdue): clamp to ``now``
+      so the value stays stable instead of drifting further into the past on
+      every poll cycle.
+    """
     ts = _coerce_timestamp(value)
     if ts is None:
         return None
 
-    # Keep minute-level precision to avoid noisy state churn from
-    # per-second server-side countdown recalculations.
+    now = datetime.now(timezone.utc)
+    if ts <= now:
+        # Action is due/overdue — pin to the current minute so the state stays
+        # stable until the process moves to the next phase.
+        return now.replace(second=0, microsecond=0)
+
     return ts.replace(second=0, microsecond=0)
 
 
+# Devices that are online and were last seen within this window are considered
+# "just now" — we keep the pinned timestamp to avoid constant state churn.
+_LAST_ONLINE_STABLE_WINDOW = timedelta(minutes=5)
+
 
 def _effective_last_time_online(coordinator, serial, device):
-    """Return a UI-friendly last-online timestamp."""
-    now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    """Return a UI-friendly last-online timestamp.
 
-    if coordinator.realtime_enabled and coordinator.get_telemetry(serial) is not None:
-        return now
+    When the device is actively online (MQTT telemetry present, or REST online
+    flag set), return the stored last-seen timestamp rather than regenerating
+    ``now`` on every call.  This prevents the "28 seconds ago → 29 seconds
+    ago" churn that results from writing a fresh timestamp every poll cycle.
 
-    online_flag = device.get("online") if isinstance(device, dict) else None
-    if online_flag is True:
-        return now
+    The stored timestamp is only updated when the device goes offline and comes
+    back, at which point it will naturally reflect a real point in time.  If
+    the device has been online continuously the stored value may be somewhat
+    stale — but anything within ``_LAST_ONLINE_STABLE_WINDOW`` (5 minutes) is
+    clamped to ``now`` on first encounter and then held stable.
+    """
+    now = datetime.now(timezone.utc)
 
-    return _coerce_timestamp(device.get("last_time_online")) if isinstance(device, dict) else None
+    is_online = (
+        (coordinator.realtime_enabled and coordinator.get_telemetry(serial) is not None)
+        or (isinstance(device, dict) and device.get("online") is True)
+    )
+
+    stored = _coerce_timestamp(device.get("last_time_online")) if isinstance(device, dict) else None
+
+    if is_online:
+        if stored is None or (now - stored) < _LAST_ONLINE_STABLE_WINDOW:
+            # Within the stable window — return the stored value so the state
+            # doesn't change on every poll.  On the very first poll ``stored``
+            # may be None or equal to now; in that case pin to the current
+            # minute so subsequent calls return the same value.
+            if stored is None:
+                return now.replace(second=0, microsecond=0)
+            return stored
+        # Beyond the window — the stored timestamp is meaningfully stale, so
+        # just return it as-is (device has been online a long time; the exact
+        # last-seen time is no longer "just now").
+        return stored
+
+    return stored
 
 def _overlay_mqtt(device: dict, telemetry) -> None:
     """Overlay live MQTT telemetry onto a REST device dict, in place.
