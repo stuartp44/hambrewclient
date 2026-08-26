@@ -178,24 +178,15 @@ def _session_started_from_session(session):
 
 
 def _next_action_state(value):
-    """Return a stable next-action timestamp for Home Assistant.
+    """Return the next-action timestamp truncated to the minute.
 
-    - If the next action is in the future: truncate to the minute so
-      per-second server-side countdown recalculations don't cause state churn.
-    - If the next action is in the past or imminent (overdue): clamp to ``now``
-      so the value stays stable instead of drifting further into the past on
-      every poll cycle.
+    Returns ``None`` when there is no value.  Callers are responsible for
+    deciding whether an overdue timestamp should be pinned — see the sensor
+    classes that cache the last-emitted value.
     """
     ts = _coerce_timestamp(value)
     if ts is None:
         return None
-
-    now = datetime.now(timezone.utc)
-    if ts <= now:
-        # Action is due/overdue — pin to the current minute so the state stays
-        # stable until the process moves to the next phase.
-        return now.replace(second=0, microsecond=0)
-
     return ts.replace(second=0, microsecond=0)
 
 
@@ -205,42 +196,15 @@ _LAST_ONLINE_STABLE_WINDOW = timedelta(minutes=5)
 
 
 def _effective_last_time_online(coordinator, serial, device):
-    """Return a UI-friendly last-online timestamp.
-
-    When the device is actively online (MQTT telemetry present, or REST online
-    flag set), return the stored last-seen timestamp rather than regenerating
-    ``now`` on every call.  This prevents the "28 seconds ago → 29 seconds
-    ago" churn that results from writing a fresh timestamp every poll cycle.
-
-    The stored timestamp is only updated when the device goes offline and comes
-    back, at which point it will naturally reflect a real point in time.  If
-    the device has been online continuously the stored value may be somewhat
-    stale — but anything within ``_LAST_ONLINE_STABLE_WINDOW`` (5 minutes) is
-    clamped to ``now`` on first encounter and then held stable.
-    """
-    now = datetime.now(timezone.utc)
-
+    """Return the raw last-online timestamp from the device dict, or None."""
     is_online = (
         (coordinator.realtime_enabled and coordinator.get_telemetry(serial) is not None)
         or (isinstance(device, dict) and device.get("online") is True)
     )
-
     stored = _coerce_timestamp(device.get("last_time_online")) if isinstance(device, dict) else None
-
-    if is_online:
-        if stored is None or (now - stored) < _LAST_ONLINE_STABLE_WINDOW:
-            # Within the stable window — return the stored value so the state
-            # doesn't change on every poll.  On the very first poll ``stored``
-            # may be None or equal to now; in that case pin to the current
-            # minute so subsequent calls return the same value.
-            if stored is None:
-                return now.replace(second=0, microsecond=0)
-            return stored
-        # Beyond the window — the stored timestamp is meaningfully stale, so
-        # just return it as-is (device has been online a long time; the exact
-        # last-seen time is no longer "just now").
-        return stored
-
+    if is_online and stored is None:
+        # No stored timestamp yet — use now as a seed; the entity will cache it.
+        return datetime.now(timezone.utc).replace(second=0, microsecond=0)
     return stored
 
 def _overlay_mqtt(device: dict, telemetry) -> None:
@@ -1068,28 +1032,50 @@ class CraftLastTimeOnlineSensor(CraftSensor):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    
+    def __init__(self, coordinator, device, state):
+        super().__init__(coordinator, device, state)
+        self._cached_value = None
+
     @property
     def name(self):
         """Return the name of the sensor."""
         return "Last Time Online"
 
-    
     @property
     def native_value(self):
-        """Return the last time this device was seen online."""
+        """Return a stable last-online timestamp.
+
+        Avoids writing a new state on every poll by only updating the cached
+        value when the new timestamp is meaningfully different (more than
+        _LAST_ONLINE_STABLE_WINDOW older than the cached one, or device goes
+        offline).
+        """
         device = self._get_latest_device()
         if not device:
-            return None
-        return _effective_last_time_online(self.coordinator, self.device_id, device)
+            return self._cached_value
 
-    
+        new_value = _effective_last_time_online(self.coordinator, self.device_id, device)
+
+        if new_value is None:
+            self._cached_value = None
+            return None
+
+        if self._cached_value is None:
+            self._cached_value = new_value
+            return self._cached_value
+
+        # Only update if the new value is more than the stable window newer than cached.
+        delta = new_value - self._cached_value
+        if delta > _LAST_ONLINE_STABLE_WINDOW:
+            self._cached_value = new_value
+
+        return self._cached_value
+
     @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:clock-check-outline"
 
-    
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
@@ -1187,26 +1173,54 @@ class CraftNextActionDateTimeSensor(CraftSensor):
     _attr_translation_key = "next_action_time_remaining"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    
+    def __init__(self, coordinator, device, state):
+        super().__init__(coordinator, device, state)
+        self._cached_value = None
+
     @property
     def name(self):
         """Return the name of the sensor."""
         return "Next Action"
 
-    
     @property
     def native_value(self):
-        """Return next-action state; use \"now\" when imminently due."""
+        """Return the next-action timestamp, stable against per-second server churn.
+
+        - Future timestamp: truncated to the minute; only updates when the
+          minute value actually changes (process progressing normally).
+        - Past/overdue timestamp: pinned to the first time it became overdue
+          and never updated again until a new future timestamp arrives.  This
+          prevents the value from drifting backward every poll.
+        """
         device = self._get_latest_device()
         if not device:
-            return None
+            return self._cached_value
 
         current_stage = _current_stage_group(self.coordinator, self.device_id)
         user_action_required = _user_action_required_state(device)
         if current_stage in {"brew_clean_idle", "brew_acid_clean_idle"} and user_action_required != "action_required":
+            self._cached_value = None
             return None
 
-        return _next_action_state(device.get("process_estimate_remaining"))
+        new_value = _next_action_state(device.get("process_estimate_remaining"))
+        if new_value is None:
+            self._cached_value = None
+            return None
+
+        now = datetime.now(timezone.utc)
+        if new_value <= now:
+            # Action is overdue — pin to the existing cached value if already
+            # overdue, so the state never changes until the process advances.
+            if self._cached_value is not None and self._cached_value <= now:
+                return self._cached_value
+            # First time it became overdue — record this moment.
+            self._cached_value = now.replace(second=0, microsecond=0)
+            return self._cached_value
+
+        # Future timestamp — only update if the minute has actually changed.
+        if new_value != self._cached_value:
+            self._cached_value = new_value
+        return self._cached_value
 
     @property
     def entity_category(self):
@@ -1690,28 +1704,43 @@ class KegLastTimeOnlineSensor(KegSensor):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    
+    def __init__(self, coordinator, device, state):
+        super().__init__(coordinator, device, state)
+        self._cached_value = None
+
     @property
     def name(self):
         """Return the name of the sensor."""
         return "Last Time Online"
 
-    
     @property
     def native_value(self):
-        """Return the last time this device was seen online."""
+        """Return a stable last-online timestamp (see CraftLastTimeOnlineSensor)."""
         device = self._get_latest_device()
         if not device:
-            return None
-        return _effective_last_time_online(self.coordinator, self.device_id, device)
+            return self._cached_value
 
-    
+        new_value = _effective_last_time_online(self.coordinator, self.device_id, device)
+
+        if new_value is None:
+            self._cached_value = None
+            return None
+
+        if self._cached_value is None:
+            self._cached_value = new_value
+            return self._cached_value
+
+        delta = new_value - self._cached_value
+        if delta > _LAST_ONLINE_STABLE_WINDOW:
+            self._cached_value = new_value
+
+        return self._cached_value
+
     @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:clock-check-outline"
 
-    
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
@@ -1842,20 +1871,37 @@ class KegNextActionDateTimeSensor(KegSensor):
     _attr_translation_key = "next_action_time_remaining"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    
+    def __init__(self, coordinator, device, state):
+        super().__init__(coordinator, device, state)
+        self._cached_value = None
+
     @property
     def name(self):
         """Return the name of the sensor."""
         return "Next Action"
 
-    
     @property
     def native_value(self):
-        """Return next-action state; use \"now\" when imminently due."""
+        """Return the next-action timestamp, stable against per-second server churn."""
         device = self._get_latest_device()
         if not device:
+            return self._cached_value
+
+        new_value = _next_action_state(device.get("process_estimate_remaining"))
+        if new_value is None:
+            self._cached_value = None
             return None
-        return _next_action_state(device.get("process_estimate_remaining"))
+
+        now = datetime.now(timezone.utc)
+        if new_value <= now:
+            if self._cached_value is not None and self._cached_value <= now:
+                return self._cached_value
+            self._cached_value = now.replace(second=0, microsecond=0)
+            return self._cached_value
+
+        if new_value != self._cached_value:
+            self._cached_value = new_value
+        return self._cached_value
 
     @property
     def entity_category(self):
@@ -1871,6 +1917,7 @@ class KegNextActionDateTimeSensor(KegSensor):
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_next_action_time_remaining"
+
 
 
 class KegSessionIdSensor(KegSensor):

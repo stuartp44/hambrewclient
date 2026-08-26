@@ -41,8 +41,12 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "realtime_connected": {
+        "name": "Live telemetry"
+      }
+    },
     "sensor": {
-      "brew_stage": {
         "name": "Brew stage"
       },
       "current_temperature": {
@@ -59,7 +63,7 @@
         }
       },
       "last_time_online": {
-        "name": "Last time online"
+        "name": "Last seen online"
       },
       "update_status": {
         "name": "Update status",

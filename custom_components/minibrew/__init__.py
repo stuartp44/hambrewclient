@@ -37,7 +37,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     # Reload the entry when options change (e.g. toggling real-time updates).
     config_entry.async_on_unload(config_entry.add_update_listener(async_update_options))
 
-    await hass.config_entries.async_forward_entry_setups(config_entry, ["sensor"])
+    await hass.config_entries.async_forward_entry_setups(config_entry, ["sensor", "binary_sensor"])
     return True
 
 async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
@@ -53,7 +53,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if coordinator is not None and getattr(coordinator, "realtime", None) is not None:
             await coordinator.realtime.async_stop()
 
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+    unload_ok =     await hass.config_entries.async_unload_platforms(entry, ["sensor", "binary_sensor"])
     if unload_ok:
         hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     return unload_ok
