@@ -305,7 +305,25 @@ def _telemetry_sensor_value(coordinator, serial, sensor_type: SensorType, *, hid
     if telemetry is None:
         return None
 
-    value = telemetry.sensor(sensor_type)
+    value = None
+    sensor_fn = getattr(telemetry, "sensor", None)
+    if callable(sensor_fn):
+        value = sensor_fn(sensor_type)
+    if value is None:
+        measurements = getattr(telemetry, "measurements", None)
+        if isinstance(measurements, dict):
+            for key in (
+                sensor_type,
+                getattr(sensor_type, "name", None),
+                str(sensor_type),
+                getattr(sensor_type, "value", None),
+                str(getattr(sensor_type, "value", "")),
+                getattr(sensor_type, "name", "").lower(),
+                str(sensor_type).lower(),
+            ):
+                if key in measurements:
+                    value = measurements[key]
+                    break
     if hide_zero and value == 0.0:
         return None
     return value
@@ -316,7 +334,16 @@ def _telemetry_temp_control_power(coordinator, serial):
     telemetry = coordinator.get_telemetry(serial)
     if telemetry is None:
         return None
-    return telemetry.temp_control_power
+    power = getattr(telemetry, "temp_control_power", None)
+    if power is not None:
+        return power
+
+    measurements = getattr(telemetry, "measurements", None)
+    if isinstance(measurements, dict):
+        for key in ("temp_control_power", "peltier_power", "peltier_mode"):
+            if key in measurements:
+                return measurements[key]
+    return None
 
 
 def _peltier_mode(power):
@@ -2081,8 +2108,8 @@ class CraftTempControlPowerSensor(CraftSensor):
 
     @property
     def available(self):
-        """Return True once real-time telemetry with a control-power reading has arrived."""
-        return _telemetry_temp_control_power(self.coordinator, self.device_id) is not None
+        """Keep the entity visible even before the first peltier reading arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def icon(self):
@@ -2122,8 +2149,8 @@ class KegTempControlPowerSensor(KegSensor):
 
     @property
     def available(self):
-        """Return True once real-time telemetry with a control-power reading has arrived."""
-        return _telemetry_temp_control_power(self.coordinator, self.device_id) is not None
+        """Keep the entity visible even before the first peltier reading arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def icon(self):
@@ -2164,6 +2191,11 @@ class CraftPeltierFanPowerSensor(CraftSensor):
         return round(value) if value is not None else None
 
     @property
+    def available(self):
+        """Keep the entity visible even before the first fan telemetry arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
+
+    @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:fan"
@@ -2200,6 +2232,11 @@ class KegPeltierFanPowerSensor(KegSensor):
             self.coordinator, self.device_id, SensorType.PELTIER_FAN_POWER, hide_zero=True
         )
         return round(value) if value is not None else None
+
+    @property
+    def available(self):
+        """Keep the entity visible even before the first fan telemetry arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def icon(self):
@@ -2308,6 +2345,11 @@ class CraftButtonSensor(CraftSensor):
         value = _telemetry_sensor_value(self.coordinator, self.device_id, SensorType.BUTTON)
         return _button_state(value)
 
+    @property
+    def available(self):
+        """Keep the entity visible even before the first button telemetry arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
+
     
     @property
     def icon(self):
@@ -2342,6 +2384,11 @@ class KegButtonSensor(KegSensor):
         value = _telemetry_sensor_value(self.coordinator, self.device_id, SensorType.BUTTON)
         return _button_state(value)
 
+    @property
+    def available(self):
+        """Keep the entity visible even before the first button telemetry arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
+
     
     @property
     def icon(self):
@@ -2375,8 +2422,8 @@ class CraftPeltierModeSensor(CraftSensor):
 
     @property
     def available(self):
-        """Return True when Peltier telemetry has arrived."""
-        return _telemetry_temp_control_power(self.coordinator, self.device_id) is not None
+        """Keep the entity visible even before the first peltier reading arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def icon(self):
@@ -2409,8 +2456,8 @@ class KegPeltierModeSensor(KegSensor):
 
     @property
     def available(self):
-        """Return True when Peltier telemetry has arrived."""
-        return _telemetry_temp_control_power(self.coordinator, self.device_id) is not None
+        """Keep the entity visible even before the first peltier reading arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def icon(self):
