@@ -19,7 +19,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 - **Current Stage** - Active stage information
 - **Process Phase** - Current phase details from runtime telemetry
 - **Online Status** - Device connectivity status
-- **Last Time Online** - Timestamp of the last known online heartbeat (diagnostic)
+- **Online Since** - Timestamp of the last known online heartbeat (diagnostic)
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **User Action Required** - Notifications for required user actions
@@ -34,7 +34,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 - **Beer Name** - Currently loaded beer name (shows `Custom Fermentation` in custom fermentation mode, including inferred fermenting/primary sessions with unknown beer metadata)
 - **Beer Style** - Currently loaded beer style (`N/A` in custom fermentation mode)
 - **Online Status** - Device connectivity status
-- **Last Time Online** - Timestamp of the last known online heartbeat (diagnostic)
+- **Online Since** - Timestamp of the last known online heartbeat (diagnostic)
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **Action Required** - Notifications for required user actions
@@ -42,8 +42,10 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 - **Session ID** - Active brew session identifier (diagnostic)
 - **Brew Session Started** - Session start timestamp from MiniBrew session metadata (diagnostic)
 - **Temp Control Power** *(real-time MQTT)* - Peltier heating/cooling power (%)
+- **Peltier Mode** *(real-time MQTT)* - Cooling / warming / idle state derived from Peltier power
 - **Fan Duty** *(real-time MQTT)* - Peltier fan output (%)
 - **ESP Core Temperature** *(real-time MQTT)* - Internal controller temperature
+- **Button** *(real-time MQTT)* - Button state
 
 ## Installation
 
@@ -80,6 +82,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 After adding the integration, you can configure additional options:
 
 - **Real-time discovery interval**: How often to refresh discovery and fallback data from REST while MQTT drives live telemetry (default: 300 seconds)
+- Some MQTT-backed sensors only appear once the device publishes the relevant telemetry. If the device is connected but a value is still unavailable, Home Assistant may show `Unknown` until that field arrives.
 
 To access options:
 1. Go to **Settings** → **Devices & Services**
