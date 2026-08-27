@@ -47,102 +47,105 @@
       }
     },
     "sensor": {
-      "name": "Brew stage"
-    },
-    "current_temperature": {
-      "name": "Current temperature"
-    },
-    "target_temperature": {
-      "name": "Target temperature"
-    },
-    "cloud_connection": {
-      "name": "Cloud connection",
-      "state": {
-        "online": "Online",
-        "offline": "Offline"
-      }
-    },
-    "last_time_online": {
-      "name": "Last seen online"
-    },
-    "update_status": {
-      "name": "Update status",
-      "state": {
-        "updating": "Updating",
-        "not_updating": "Not updating"
-      }
-    },
-    "user_action_required": {
-      "name": "User action required",
-      "state": {
-        "action_required": "Action required",
-        "no_action_required": "No action required",
-        "unknown": "Unknown"
-      }
-    },
-    "next_action_time_remaining": {
-      "name": "Next action",
-      "state": {
-        "now": "Now"
-      }
-    },
-    "session_id": {
-      "name": "Session ID"
-    },
-    "session_started": {
-      "name": "Brew session started"
-    },
-    "current_stage": {
-      "name": "Current stage",
-      "state": {
-        "brew_clean_idle": "Clean and ready to brew",
-        "fermenting": "Fermenting",
-        "serving": "Serving",
-        "brew_acid_clean_idle": "Ready to clean",
-        "unknown": "Unknown"
-      }
-    },
-    "process_phase": {
-      "name": "Process phase"
-    },
-    "needs_cleaning": {
-      "name": "Needs cleaning",
-      "state": {
-        "needs_cleaning": "Needs cleaning",
-        "clean": "Clean"
-      }
-    },
-    "temperature": {
-      "name": "Temperature"
-    },
-    "beer_style": {
-      "name": "Beer style"
-    },
-    "beer_name": {
-      "name": "Beer name"
-    },
-    "temp_control_power": {
-      "name": "Peltier power"
-    },
-    "peltier_mode": {
-      "name": "Peltier mode",
-      "state": {
-        "cooling": "Cooling",
-        "warming": "Warming",
-        "idle": "Idle"
-      }
-    },
-    "peltier_fan_power": {
-      "name": "Fan duty"
-    },
-    "esp_core_temp": {
-      "name": "ESP32 core temperature"
-    },
-    "button": {
-      "name": "Button",
-      "state": {
-        "on": "On",
-        "off": "Off"
+      "name": "Brew stage",
+      "brew_stage": {
+        "name": "Brew stage"
+      },
+      "current_temperature": {
+        "name": "Current temperature"
+      },
+      "target_temperature": {
+        "name": "Target temperature"
+      },
+      "cloud_connection": {
+        "name": "Cloud connection",
+        "state": {
+          "online": "Online",
+          "offline": "Offline"
+        }
+      },
+      "last_time_online": {
+        "name": "Online since"
+      },
+      "update_status": {
+        "name": "Update status",
+        "state": {
+          "updating": "Updating",
+          "not_updating": "Not updating"
+        }
+      },
+      "user_action_required": {
+        "name": "User action required",
+        "state": {
+          "action_required": "Action required",
+          "no_action_required": "No action required",
+          "unknown": "Unknown"
+        }
+      },
+      "next_action_time_remaining": {
+        "name": "Next action",
+        "state": {
+          "now": "Now"
+        }
+      },
+      "session_id": {
+        "name": "Session ID"
+      },
+      "session_started": {
+        "name": "Brew session started"
+      },
+      "current_stage": {
+        "name": "Current stage",
+        "state": {
+          "brew_clean_idle": "Clean and ready to brew",
+          "fermenting": "Fermenting",
+          "serving": "Serving",
+          "brew_acid_clean_idle": "Ready to clean",
+          "unknown": "Unknown"
+        }
+      },
+      "process_phase": {
+        "name": "Process phase"
+      },
+      "needs_cleaning": {
+        "name": "Needs cleaning",
+        "state": {
+          "needs_cleaning": "Needs cleaning",
+          "clean": "Clean"
+        }
+      },
+      "temperature": {
+        "name": "Temperature"
+      },
+      "beer_style": {
+        "name": "Beer style"
+      },
+      "beer_name": {
+        "name": "Beer name"
+      },
+      "temp_control_power": {
+        "name": "Peltier power"
+      },
+      "peltier_mode": {
+        "name": "Peltier mode",
+        "state": {
+          "cooling": "Cooling",
+          "warming": "Warming",
+          "idle": "Idle"
+        }
+      },
+      "peltier_fan_power": {
+        "name": "Fan duty"
+      },
+      "esp_core_temp": {
+        "name": "ESP32 core temperature"
+      },
+      "button": {
+        "name": "Button",
+        "state": {
+          "on": "On",
+          "off": "Off"
+        }
       }
     }
   }

@@ -1114,7 +1114,7 @@ class CraftLastTimeOnlineSensor(CraftSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return "Last Time Online"
+        return "Online Since"
 
     @property
     def native_value(self):
@@ -1795,7 +1795,7 @@ class KegLastTimeOnlineSensor(KegSensor):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return "Last Time Online"
+        return "Online Since"
 
     @property
     def native_value(self):
