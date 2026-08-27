@@ -47,7 +47,6 @@
       }
     },
     "sensor": {
-      "name": "Brew stage",
       "brew_stage": {
         "name": "Brew stage"
       },
