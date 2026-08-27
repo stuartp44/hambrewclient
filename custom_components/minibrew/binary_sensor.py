@@ -5,33 +5,12 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import EntityCategory
-from homeassistant.helpers.entity_registry import RegistryEntryDisabler
 
 from .const import DOMAIN
 from .sensor import _device_to_dict
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _disable_realtime_connected_entities(hass, config_entry):
-    """Disable the realtime_connected binary sensor by default via the registry.
-
-    Mirrors the pattern used for ESP32 core temperature: the entity registers
-    enabled, then the integration immediately disables it so it shows in the
-    entity list (greyed out) but doesn't clutter the device card by default.
-    """
-    registry = er.async_get(hass)
-    for entry in er.async_entries_for_config_entry(registry, config_entry.entry_id):
-        if not entry.unique_id.endswith("_realtime_connected"):
-            continue
-        if entry.disabled_by == RegistryEntryDisabler.INTEGRATION:
-            continue
-        registry.async_update_entity(
-            entry.entity_id,
-            disabled_by=RegistryEntryDisabler.INTEGRATION,
-        )
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -53,7 +32,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             )
 
     async_add_entities(entities)
-    _disable_realtime_connected_entities(hass, config_entry)
 
 
 class MiniBrewRealtimeConnectedSensor(BinarySensorEntity):
@@ -62,6 +40,7 @@ class MiniBrewRealtimeConnectedSensor(BinarySensorEntity):
     _attr_translation_key = "realtime_connected"
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
     _attr_has_entity_name = True
 
     def __init__(self, coordinator, config_entry, device_dict):

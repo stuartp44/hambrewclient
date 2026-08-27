@@ -20,44 +20,51 @@ from .realtime import MiniBrewRealtimeManager, overlay_mqtt
 _LOGGER = logging.getLogger(__name__)
 
 _USER_ACTION_REQUIRED_OPTIONS = [
-    "action_required",
-    "no_action_required",
-    "unknown",
+    "Action required",
+    "No action required",
+    "Unknown",
 ]
 
 _CLOUD_CONNECTION_OPTIONS = [
-    "online",
-    "offline",
+    "Online",
+    "Offline",
 ]
 
 _UPDATE_STATUS_OPTIONS = [
-    "updating",
-    "not_updating",
+    "Updating",
+    "Not updating",
 ]
 
 _BUTTON_OPTIONS = [
-    "on",
-    "off",
+    "On",
+    "Off",
 ]
 
 _PELTIER_MODE_OPTIONS = [
-    "cooling",
-    "warming",
-    "idle",
+    "Cooling",
+    "Warming",
+    "Idle",
 ]
 
 _CURRENT_STAGE_OPTIONS = [
-    "brew_clean_idle",
-    "fermenting",
-    "serving",
-    "brew_acid_clean_idle",
-    "unknown",
+    "Clean and ready to brew",
+    "Fermenting",
+    "Serving",
+    "Ready to clean",
+    "Unknown",
 ]
 
 _NEEDS_CLEANING_OPTIONS = [
-    "needs_cleaning",
-    "clean",
+    "Needs cleaning",
+    "Clean",
 ]
+
+
+def _display_option(value, mapping):
+    """Return a human-friendly label for a raw sensor option."""
+    if value is None:
+        return None
+    return mapping.get(value, value)
 
 
 def _build_process_phase_options() -> list[str]:
@@ -317,10 +324,10 @@ def _peltier_mode(power):
     if power is None:
         return None
     if power < 0:
-        return "cooling"
+        return "Cooling"
     if power > 0:
-        return "warming"
-    return "idle"
+        return "Warming"
+    return "Idle"
 
 
 def _button_state(value):
@@ -328,7 +335,7 @@ def _button_state(value):
     if value is None:
         return None
     try:
-        return "on" if float(value) >= 1.0 else "off"
+        return "On" if float(value) >= 1.0 else "Off"
     except (TypeError, ValueError):
         return None
 
@@ -366,6 +373,47 @@ def _process_phase_display(device):
             break
 
     return phase_name.replace("_", " ").title()
+
+
+_CURRENT_STAGE_LABELS = {
+    "brew_clean_idle": "Clean and ready to brew",
+    "fermenting": "Fermenting",
+    "serving": "Serving",
+    "brew_acid_clean_idle": "Ready to clean",
+    "unknown": "Unknown",
+}
+
+
+_CLOUD_CONNECTION_LABELS = {
+    "online": "Online",
+    "offline": "Offline",
+}
+
+
+_UPDATE_STATUS_LABELS = {
+    "updating": "Updating",
+    "not_updating": "Not updating",
+}
+
+
+_USER_ACTION_REQUIRED_LABELS = {
+    "action_required": "Action required",
+    "no_action_required": "No action required",
+    "unknown": "Unknown",
+}
+
+
+_NEEDS_CLEANING_LABELS = {
+    "needs_cleaning": "Needs cleaning",
+    "clean": "Clean",
+}
+
+
+_PELTIER_MODE_LABELS = {
+    "cooling": "Cooling",
+    "warming": "Warming",
+    "idle": "Idle",
+}
 
 
 def _user_action_required_state(device):
@@ -1005,9 +1053,9 @@ class CraftSensorOnlineStatusSensor(CraftSensor):
     def native_value(self):
         """Return the online status."""
         if self.coordinator.realtime_enabled and self.coordinator.get_telemetry(self.device_id) is not None:
-            return "online"
+            return "Online"
         device = self._get_latest_device()
-        return "online" if device and device.get("online") else "offline"
+        return "Online" if device and device.get("online") else "Offline"
 
     @property
     def entity_category(self):
@@ -1104,7 +1152,7 @@ class CraftSensorIsUpdatingSensor(CraftSensor):
         device = self._get_latest_device()
         if not device or device.get("updating") is None:
             return None
-        return "updating" if device.get("updating") else "not_updating"
+        return "Updating" if device.get("updating") else "Not updating"
 
     
     @property
@@ -1146,7 +1194,10 @@ class CraftUserActionRequiredSensor(CraftSensor):
     
     def native_value(self):
         """Return the user action required status."""
-        return _user_action_required_state(self._get_latest_device())
+        return _display_option(
+            _user_action_required_state(self._get_latest_device()),
+            _USER_ACTION_REQUIRED_LABELS,
+        )
 
 
     @property
@@ -1157,7 +1208,7 @@ class CraftUserActionRequiredSensor(CraftSensor):
     @property
     def icon(self):
         """Return the icon for the sensor."""
-        if self.native_value == "action_required":
+        if self.native_value == "Action required":
             return "mdi:alert"
         return "mdi:check-circle"
 
@@ -1331,7 +1382,10 @@ class CraftSensorCurrentStageSensor(CraftSensor):
     
     def native_value(self):
         """Return a human-readable phase name based on the device's group."""
-        return _current_stage_group(self.coordinator, self.device_id)
+        return _display_option(
+            _current_stage_group(self.coordinator, self.device_id),
+            _CURRENT_STAGE_LABELS,
+        )
 
     @property
     def icon(self):
@@ -1391,7 +1445,7 @@ class CraftSensorNeedsCleaningSensor(CraftSensor):
     def native_value(self):
         """Return the cleaning status."""
         device = self._get_latest_device()
-        return "needs_cleaning" if device and device.get("needs_acid_cleaning") else "clean"
+        return "Needs cleaning" if device and device.get("needs_acid_cleaning") else "Clean"
 
     @property
     def entity_category(self):
@@ -1616,7 +1670,10 @@ class KegCurrentStageSensor(KegSensor):
     @property
     def native_value(self):
         """Return the current high-level stage from the overview group."""
-        return _current_stage_group(self.coordinator, self.device_id)
+        return _display_option(
+            _current_stage_group(self.coordinator, self.device_id),
+            _CURRENT_STAGE_LABELS,
+        )
 
     @property
     def icon(self):
@@ -1677,9 +1734,9 @@ class KegOnlineStatusSensor(KegSensor):
     def native_value(self):
         """Return the online status."""
         if self.coordinator.realtime_enabled and self.coordinator.get_telemetry(self.device_id) is not None:
-            return "online"
+            return "Online"
         device = self._get_latest_device()
-        return "online" if device and device.get("online") else "offline"
+        return "Online" if device and device.get("online") else "Offline"
 
     @property
     def entity_category(self):
@@ -1769,7 +1826,7 @@ class KegIsUpdatingSensor(KegSensor):
         device = self._get_latest_device()
         if not device or device.get("updating") is None:
             return None
-        return "updating" if device.get("updating") else "not_updating"
+        return "Updating" if device.get("updating") else "Not updating"
 
     
     @property
@@ -1808,7 +1865,7 @@ class KegNeedsCleaningSensor(KegSensor):
     def native_value(self):
         """Return the cleaning status."""
         device = self._get_latest_device()
-        return "needs_cleaning" if device and device.get("needs_acid_cleaning") else "clean"
+        return "Needs cleaning" if device and device.get("needs_acid_cleaning") else "Clean"
 
     @property
     def entity_category(self):
@@ -1844,7 +1901,10 @@ class KegActionRequiredSensor(KegSensor):
     
     def native_value(self):
         """Return the user action required status."""
-        return _user_action_required_state(self._get_latest_device())
+        return _display_option(
+            _user_action_required_state(self._get_latest_device()),
+            _USER_ACTION_REQUIRED_LABELS,
+        )
 
 
     @property
@@ -1855,7 +1915,7 @@ class KegActionRequiredSensor(KegSensor):
     @property
     def icon(self):
         """Return the icon for the sensor."""
-        if self.native_value == "action_required":
+        if self.native_value == "Action required":
             return "mdi:alert"
         return "mdi:check-circle"
 

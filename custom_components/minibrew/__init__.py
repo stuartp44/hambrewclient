@@ -37,7 +37,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     # Reload the entry when options change (e.g. toggling real-time updates).
     config_entry.async_on_unload(config_entry.add_update_listener(async_update_options))
 
-    await hass.config_entries.async_forward_entry_setups(config_entry, ["sensor", "binary_sensor"])
+    await hass.config_entries.async_forward_entry_setups(config_entry, ["sensor"])
+    await hass.config_entries.async_forward_entry_setups(config_entry, ["binary_sensor"])
     return True
 
 async def async_update_options(hass: HomeAssistant, config_entry: ConfigEntry) -> None:

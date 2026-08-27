@@ -43,7 +43,7 @@
   "entity": {
     "binary_sensor": {
       "realtime_connected": {
-        "name": "Live telemetry"
+        "name": "MQTT"
       }
     },
     "sensor": {
