@@ -20,44 +20,51 @@ from .realtime import MiniBrewRealtimeManager, overlay_mqtt
 _LOGGER = logging.getLogger(__name__)
 
 _USER_ACTION_REQUIRED_OPTIONS = [
-    "action_required",
-    "no_action_required",
-    "unknown",
+    "Action required",
+    "No action required",
+    "Unknown",
 ]
 
 _CLOUD_CONNECTION_OPTIONS = [
-    "online",
-    "offline",
+    "Online",
+    "Offline",
 ]
 
 _UPDATE_STATUS_OPTIONS = [
-    "updating",
-    "not_updating",
+    "Updating",
+    "Not updating",
 ]
 
 _BUTTON_OPTIONS = [
-    "on",
-    "off",
+    "On",
+    "Off",
 ]
 
 _PELTIER_MODE_OPTIONS = [
-    "cooling",
-    "warming",
-    "idle",
+    "Cooling",
+    "Warming",
+    "Idle",
 ]
 
 _CURRENT_STAGE_OPTIONS = [
-    "brew_clean_idle",
-    "fermenting",
-    "serving",
-    "brew_acid_clean_idle",
-    "unknown",
+    "Clean and ready to brew",
+    "Fermenting",
+    "Serving",
+    "Ready to clean",
+    "Unknown",
 ]
 
 _NEEDS_CLEANING_OPTIONS = [
-    "needs_cleaning",
-    "clean",
+    "Needs cleaning",
+    "Clean",
 ]
+
+
+def _display_option(value, mapping):
+    """Return a human-friendly label for a raw sensor option."""
+    if value is None:
+        return None
+    return mapping.get(value, value)
 
 
 def _build_process_phase_options() -> list[str]:
@@ -178,29 +185,34 @@ def _session_started_from_session(session):
 
 
 def _next_action_state(value):
-    """Return a stable next-action timestamp for Home Assistant."""
+    """Return the next-action timestamp truncated to the minute.
+
+    Returns ``None`` when there is no value.  Callers are responsible for
+    deciding whether an overdue timestamp should be pinned — see the sensor
+    classes that cache the last-emitted value.
+    """
     ts = _coerce_timestamp(value)
     if ts is None:
         return None
-
-    # Keep minute-level precision to avoid noisy state churn from
-    # per-second server-side countdown recalculations.
     return ts.replace(second=0, microsecond=0)
 
 
+# Devices that are online and were last seen within this window are considered
+# "just now" — we keep the pinned timestamp to avoid constant state churn.
+_LAST_ONLINE_STABLE_WINDOW = timedelta(minutes=5)
+
 
 def _effective_last_time_online(coordinator, serial, device):
-    """Return a UI-friendly last-online timestamp."""
-    now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
-
-    if coordinator.realtime_enabled and coordinator.get_telemetry(serial) is not None:
-        return now
-
-    online_flag = device.get("online") if isinstance(device, dict) else None
-    if online_flag is True:
-        return now
-
-    return _coerce_timestamp(device.get("last_time_online")) if isinstance(device, dict) else None
+    """Return the raw last-online timestamp from the device dict, or None."""
+    is_online = (
+        (coordinator.realtime_enabled and coordinator.get_telemetry(serial) is not None)
+        or (isinstance(device, dict) and device.get("online") is True)
+    )
+    stored = _coerce_timestamp(device.get("last_time_online")) if isinstance(device, dict) else None
+    if is_online and stored is None:
+        # No stored timestamp yet — use now as a seed; the entity will cache it.
+        return datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    return stored
 
 def _overlay_mqtt(device: dict, telemetry) -> None:
     """Overlay live MQTT telemetry onto a REST device dict, in place.
@@ -293,7 +305,25 @@ def _telemetry_sensor_value(coordinator, serial, sensor_type: SensorType, *, hid
     if telemetry is None:
         return None
 
-    value = telemetry.sensor(sensor_type)
+    value = None
+    sensor_fn = getattr(telemetry, "sensor", None)
+    if callable(sensor_fn):
+        value = sensor_fn(sensor_type)
+    if value is None:
+        measurements = getattr(telemetry, "measurements", None)
+        if isinstance(measurements, dict):
+            for key in (
+                sensor_type,
+                getattr(sensor_type, "name", None),
+                str(sensor_type),
+                getattr(sensor_type, "value", None),
+                str(getattr(sensor_type, "value", "")),
+                getattr(sensor_type, "name", "").lower(),
+                str(sensor_type).lower(),
+            ):
+                if key in measurements:
+                    value = measurements[key]
+                    break
     if hide_zero and value == 0.0:
         return None
     return value
@@ -304,7 +334,16 @@ def _telemetry_temp_control_power(coordinator, serial):
     telemetry = coordinator.get_telemetry(serial)
     if telemetry is None:
         return None
-    return telemetry.temp_control_power
+    power = getattr(telemetry, "temp_control_power", None)
+    if power is not None:
+        return power
+
+    measurements = getattr(telemetry, "measurements", None)
+    if isinstance(measurements, dict):
+        for key in ("temp_control_power", "peltier_power", "peltier_mode"):
+            if key in measurements:
+                return measurements[key]
+    return None
 
 
 def _peltier_mode(power):
@@ -312,10 +351,10 @@ def _peltier_mode(power):
     if power is None:
         return None
     if power < 0:
-        return "cooling"
+        return "Cooling"
     if power > 0:
-        return "warming"
-    return "idle"
+        return "Warming"
+    return "Idle"
 
 
 def _button_state(value):
@@ -323,7 +362,7 @@ def _button_state(value):
     if value is None:
         return None
     try:
-        return "on" if float(value) >= 1.0 else "off"
+        return "On" if float(value) >= 1.0 else "Off"
     except (TypeError, ValueError):
         return None
 
@@ -361,6 +400,47 @@ def _process_phase_display(device):
             break
 
     return phase_name.replace("_", " ").title()
+
+
+_CURRENT_STAGE_LABELS = {
+    "brew_clean_idle": "Clean and ready to brew",
+    "fermenting": "Fermenting",
+    "serving": "Serving",
+    "brew_acid_clean_idle": "Ready to clean",
+    "unknown": "Unknown",
+}
+
+
+_CLOUD_CONNECTION_LABELS = {
+    "online": "Online",
+    "offline": "Offline",
+}
+
+
+_UPDATE_STATUS_LABELS = {
+    "updating": "Updating",
+    "not_updating": "Not updating",
+}
+
+
+_USER_ACTION_REQUIRED_LABELS = {
+    "action_required": "Action required",
+    "no_action_required": "No action required",
+    "unknown": "Unknown",
+}
+
+
+_NEEDS_CLEANING_LABELS = {
+    "needs_cleaning": "Needs cleaning",
+    "clean": "Clean",
+}
+
+
+_PELTIER_MODE_LABELS = {
+    "cooling": "Cooling",
+    "warming": "Warming",
+    "idle": "Idle",
+}
 
 
 def _user_action_required_state(device):
@@ -587,15 +667,27 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             _LOGGER.debug("Fetching data from MiniBrew API...")
             data = await self.hass.async_add_executor_job(self.client.get_brewery_overview)
-            devices = await self.hass.async_add_executor_job(self.client.get_devices)
-            _merge_last_time_online_from_devices(data, devices)
-            await self._async_refresh_session_metadata(data)
-            _LOGGER.debug("Fetched MiniBrew overview: groups=%s active_sessions=%s", {k: len(v) for k, v in data.__dict__.items()}, sum(1 for session_id in self._active_session_by_serial.values() if session_id is not None))
         except Exception as err:
             if _is_auth_error(err):
                 raise ConfigEntryAuthFailed("MiniBrew credentials are invalid") from err
-            _LOGGER.error(f"Error fetching data: {err}")
-            raise UpdateFailed(f"Error fetching data: {err}")
+            _LOGGER.error("Error fetching brewery overview: %s", err)
+            raise UpdateFailed(f"Error fetching data: {err}") from err
+
+        try:
+            devices = await self.hass.async_add_executor_job(self.client.get_devices)
+            _merge_last_time_online_from_devices(data, devices)
+        except Exception as err:  # noqa: BLE001 - supplemental endpoint; don't fail the whole update
+            _LOGGER.warning("MiniBrew: could not fetch device list (last_time_online may be stale): %s", err)
+
+        try:
+            await self._async_refresh_session_metadata(data)
+        except Exception as err:
+            if _is_auth_error(err):
+                raise ConfigEntryAuthFailed("MiniBrew credentials are invalid") from err
+            _LOGGER.error("Error fetching data: %s", err)
+            raise UpdateFailed(f"Error fetching data: {err}") from err
+
+        _LOGGER.debug("Fetched MiniBrew overview: groups=%s active_sessions=%s", {k: len(v) for k, v in data.__dict__.items()}, sum(1 for session_id in self._active_session_by_serial.values() if session_id is not None))
 
         # Subscribe the MQTT stream to any newly discovered devices.
         if self.realtime is not None:
@@ -800,8 +892,8 @@ class CraftSensor(SensorEntity):
 
     @property
     def available(self):
-        """Return if the sensor is available."""
-        return self.coordinator.last_update_success
+        """Return True when the coordinator has data and the device is present."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     async def async_update(self):
         """Update the sensor."""
@@ -851,12 +943,6 @@ class CraftSensorCurrentTemperatureSensor(CraftSensor):
         return "mdi:thermometer"
 
     @property
-    def available(self):
-        """Return True if the sensor has data."""
-        device = self._get_latest_device()
-        return device is not None and device.get("current_temp") is not None
-
-    @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_current_temperature"
@@ -893,12 +979,6 @@ class CraftSensorTargetTemperatureSensor(CraftSensor):
         return "mdi:thermometer"
 
     @property
-    def available(self):
-        """Return True if the sensor has data."""
-        device = self._get_latest_device()
-        return device is not None and device.get("target_temp") is not None
-
-    @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_target_temperature"
@@ -928,13 +1008,6 @@ class CraftBeerStyleSensor(CraftSensor):
             value = value.strip()
         return value or None
 
-    @property
-    def available(self):
-        """Return True when beer style is known."""
-        return self.native_value is not None
-
-
-    
     @property
     def icon(self):
         """Return the icon for the sensor."""
@@ -974,13 +1047,6 @@ class CraftBeerNameSensor(CraftSensor):
         return value or None
 
     @property
-    def available(self):
-        """Return True when beer name is known."""
-        return self.native_value is not None
-
-
-    
-    @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:beer-outline"
@@ -1014,9 +1080,9 @@ class CraftSensorOnlineStatusSensor(CraftSensor):
     def native_value(self):
         """Return the online status."""
         if self.coordinator.realtime_enabled and self.coordinator.get_telemetry(self.device_id) is not None:
-            return "online"
+            return "Online"
         device = self._get_latest_device()
-        return "online" if device and device.get("online") else "offline"
+        return "Online" if device and device.get("online") else "Offline"
 
     @property
     def entity_category(self):
@@ -1041,28 +1107,50 @@ class CraftLastTimeOnlineSensor(CraftSensor):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    
+    def __init__(self, coordinator, device, state):
+        super().__init__(coordinator, device, state)
+        self._cached_value = None
+
     @property
     def name(self):
         """Return the name of the sensor."""
-        return "Last Time Online"
+        return "Online Since"
 
-    
     @property
     def native_value(self):
-        """Return the last time this device was seen online."""
+        """Return a stable last-online timestamp.
+
+        Avoids writing a new state on every poll by only updating the cached
+        value when the new timestamp is meaningfully different (more than
+        _LAST_ONLINE_STABLE_WINDOW older than the cached one, or device goes
+        offline).
+        """
         device = self._get_latest_device()
         if not device:
-            return None
-        return _effective_last_time_online(self.coordinator, self.device_id, device)
+            return self._cached_value
 
-    
+        new_value = _effective_last_time_online(self.coordinator, self.device_id, device)
+
+        if new_value is None:
+            self._cached_value = None
+            return None
+
+        if self._cached_value is None:
+            self._cached_value = new_value
+            return self._cached_value
+
+        # Only update if the new value is more than the stable window newer than cached.
+        delta = new_value - self._cached_value
+        if delta > _LAST_ONLINE_STABLE_WINDOW:
+            self._cached_value = new_value
+
+        return self._cached_value
+
     @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:clock-check-outline"
 
-    
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
@@ -1091,13 +1179,13 @@ class CraftSensorIsUpdatingSensor(CraftSensor):
         device = self._get_latest_device()
         if not device or device.get("updating") is None:
             return None
-        return "updating" if device.get("updating") else "not_updating"
+        return "Updating" if device.get("updating") else "Not updating"
 
     
     @property
     def available(self):
         """Return True when update status is known from the device payload."""
-        return self.native_value is not None
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def entity_category(self):
@@ -1133,7 +1221,10 @@ class CraftUserActionRequiredSensor(CraftSensor):
     
     def native_value(self):
         """Return the user action required status."""
-        return _user_action_required_state(self._get_latest_device())
+        return _display_option(
+            _user_action_required_state(self._get_latest_device()),
+            _USER_ACTION_REQUIRED_LABELS,
+        )
 
 
     @property
@@ -1144,7 +1235,7 @@ class CraftUserActionRequiredSensor(CraftSensor):
     @property
     def icon(self):
         """Return the icon for the sensor."""
-        if self.native_value == "action_required":
+        if self.native_value == "Action required":
             return "mdi:alert"
         return "mdi:check-circle"
 
@@ -1160,32 +1251,54 @@ class CraftNextActionDateTimeSensor(CraftSensor):
     _attr_translation_key = "next_action_time_remaining"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    
+    def __init__(self, coordinator, device, state):
+        super().__init__(coordinator, device, state)
+        self._cached_value = None
+
     @property
     def name(self):
         """Return the name of the sensor."""
         return "Next Action"
 
-    
     @property
     def native_value(self):
-        """Return next-action state; use \"now\" when imminently due."""
+        """Return the next-action timestamp, stable against per-second server churn.
+
+        - Future timestamp: truncated to the minute; only updates when the
+          minute value actually changes (process progressing normally).
+        - Past/overdue timestamp: pinned to the first time it became overdue
+          and never updated again until a new future timestamp arrives.  This
+          prevents the value from drifting backward every poll.
+        """
         device = self._get_latest_device()
         if not device:
-            return None
+            return self._cached_value
 
         current_stage = _current_stage_group(self.coordinator, self.device_id)
         user_action_required = _user_action_required_state(device)
         if current_stage in {"brew_clean_idle", "brew_acid_clean_idle"} and user_action_required != "action_required":
+            self._cached_value = None
             return None
 
-        return _next_action_state(device.get("process_estimate_remaining"))
+        new_value = _next_action_state(device.get("process_estimate_remaining"))
+        if new_value is None:
+            self._cached_value = None
+            return None
 
-    @property
-    def available(self):
-        """Return True when a next action timestamp is available."""
-        return self.native_value is not None
+        now = datetime.now(timezone.utc)
+        if new_value <= now:
+            # Action is overdue — pin to the existing cached value if already
+            # overdue, so the state never changes until the process advances.
+            if self._cached_value is not None and self._cached_value <= now:
+                return self._cached_value
+            # First time it became overdue — record this moment.
+            self._cached_value = now.replace(second=0, microsecond=0)
+            return self._cached_value
 
+        # Future timestamp — only update if the minute has actually changed.
+        if new_value != self._cached_value:
+            self._cached_value = new_value
+        return self._cached_value
 
     @property
     def entity_category(self):
@@ -1222,11 +1335,6 @@ class CraftSessionIdSensor(CraftSensor):
             return None
         session_id, _ = _session_id_from_device_dict(device)
         return session_id
-
-    @property
-    def available(self):
-        """Return True when an active session is present."""
-        return self.native_value is not None
 
     @property
     def icon(self):
@@ -1272,11 +1380,6 @@ class CraftSessionStartedSensor(CraftSensor):
         return None
 
     @property
-    def available(self):
-        """Return True when active session start is known."""
-        return self.native_value is not None
-
-    @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:calendar-start"
@@ -1306,7 +1409,10 @@ class CraftSensorCurrentStageSensor(CraftSensor):
     
     def native_value(self):
         """Return a human-readable phase name based on the device's group."""
-        return _current_stage_group(self.coordinator, self.device_id)
+        return _display_option(
+            _current_stage_group(self.coordinator, self.device_id),
+            _CURRENT_STAGE_LABELS,
+        )
 
     @property
     def icon(self):
@@ -1334,12 +1440,6 @@ class CraftProcessPhaseSensor(CraftSensor):
     def native_value(self):
         """Return current process phase label from telemetry."""
         return _process_phase_display(self._get_latest_device())
-
-    @property
-    def available(self):
-        """Return True once process phase telemetry is available."""
-        device = self._get_latest_device()
-        return device is not None and device.get("process_phase") is not None
 
     @property
     def icon(self):
@@ -1372,7 +1472,7 @@ class CraftSensorNeedsCleaningSensor(CraftSensor):
     def native_value(self):
         """Return the cleaning status."""
         device = self._get_latest_device()
-        return "needs_cleaning" if device and device.get("needs_acid_cleaning") else "clean"
+        return "Needs cleaning" if device and device.get("needs_acid_cleaning") else "Clean"
 
     @property
     def entity_category(self):
@@ -1414,8 +1514,8 @@ class KegSensor(SensorEntity):
     
     @property
     def available(self):
-        """Return if the sensor is available."""
-        return self.coordinator.last_update_success
+        """Return True when the coordinator has data and the device is present."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     async def async_update(self):
         """Update the sensor."""
@@ -1465,12 +1565,6 @@ class KegCurrentTemperatureSensor(KegSensor):
         return "mdi:thermometer"
 
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        device = self._get_latest_device()
-        return device is not None and device.get("current_temp") is not None
-
-    @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_{self.name}"
@@ -1506,12 +1600,6 @@ class KegTargetTemperatureSensor(KegSensor):
         return "mdi:thermometer"
 
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        device = self._get_latest_device()
-        return device is not None and device.get("target_temp") is not None
-
-    @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_{self.name}"
@@ -1543,12 +1631,6 @@ class KegBeerStyleSensor(KegSensor):
         if isinstance(value, str):
             value = value.strip()
         return value or None
-
-    @property
-    def available(self):
-        """Return True when beer style is known."""
-        return self.native_value is not None
-
 
     @property
     def icon(self):
@@ -1590,12 +1672,6 @@ class KegBeerNameSensor(KegSensor):
         return value or None
 
     @property
-    def available(self):
-        """Return True when beer name is known."""
-        return self.native_value is not None
-
-
-    @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:beer-outline"
@@ -1621,7 +1697,10 @@ class KegCurrentStageSensor(KegSensor):
     @property
     def native_value(self):
         """Return the current high-level stage from the overview group."""
-        return _current_stage_group(self.coordinator, self.device_id)
+        return _display_option(
+            _current_stage_group(self.coordinator, self.device_id),
+            _CURRENT_STAGE_LABELS,
+        )
 
     @property
     def icon(self):
@@ -1650,12 +1729,6 @@ class KegProcessPhaseSensor(KegSensor):
     def native_value(self):
         """Return current process phase label from telemetry."""
         return _process_phase_display(self._get_latest_device())
-
-    @property
-    def available(self):
-        """Return True once process phase telemetry is available."""
-        device = self._get_latest_device()
-        return device is not None and device.get("process_phase") is not None
 
     @property
     def icon(self):
@@ -1688,9 +1761,9 @@ class KegOnlineStatusSensor(KegSensor):
     def native_value(self):
         """Return the online status."""
         if self.coordinator.realtime_enabled and self.coordinator.get_telemetry(self.device_id) is not None:
-            return "online"
+            return "Online"
         device = self._get_latest_device()
-        return "online" if device and device.get("online") else "offline"
+        return "Online" if device and device.get("online") else "Offline"
 
     @property
     def entity_category(self):
@@ -1715,28 +1788,43 @@ class KegLastTimeOnlineSensor(KegSensor):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    
+    def __init__(self, coordinator, device, state):
+        super().__init__(coordinator, device, state)
+        self._cached_value = None
+
     @property
     def name(self):
         """Return the name of the sensor."""
-        return "Last Time Online"
+        return "Online Since"
 
-    
     @property
     def native_value(self):
-        """Return the last time this device was seen online."""
+        """Return a stable last-online timestamp (see CraftLastTimeOnlineSensor)."""
         device = self._get_latest_device()
         if not device:
-            return None
-        return _effective_last_time_online(self.coordinator, self.device_id, device)
+            return self._cached_value
 
-    
+        new_value = _effective_last_time_online(self.coordinator, self.device_id, device)
+
+        if new_value is None:
+            self._cached_value = None
+            return None
+
+        if self._cached_value is None:
+            self._cached_value = new_value
+            return self._cached_value
+
+        delta = new_value - self._cached_value
+        if delta > _LAST_ONLINE_STABLE_WINDOW:
+            self._cached_value = new_value
+
+        return self._cached_value
+
     @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:clock-check-outline"
 
-    
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
@@ -1765,14 +1853,9 @@ class KegIsUpdatingSensor(KegSensor):
         device = self._get_latest_device()
         if not device or device.get("updating") is None:
             return None
-        return "updating" if device.get("updating") else "not_updating"
+        return "Updating" if device.get("updating") else "Not updating"
 
     
-    @property
-    def available(self):
-        """Return True when update status is known from the device payload."""
-        return self.native_value is not None
-
     @property
     def entity_category(self):
         """Return the entity category (diagnostic)."""
@@ -1809,7 +1892,7 @@ class KegNeedsCleaningSensor(KegSensor):
     def native_value(self):
         """Return the cleaning status."""
         device = self._get_latest_device()
-        return "needs_cleaning" if device and device.get("needs_acid_cleaning") else "clean"
+        return "Needs cleaning" if device and device.get("needs_acid_cleaning") else "Clean"
 
     @property
     def entity_category(self):
@@ -1845,7 +1928,10 @@ class KegActionRequiredSensor(KegSensor):
     
     def native_value(self):
         """Return the user action required status."""
-        return _user_action_required_state(self._get_latest_device())
+        return _display_option(
+            _user_action_required_state(self._get_latest_device()),
+            _USER_ACTION_REQUIRED_LABELS,
+        )
 
 
     @property
@@ -1856,7 +1942,7 @@ class KegActionRequiredSensor(KegSensor):
     @property
     def icon(self):
         """Return the icon for the sensor."""
-        if self.native_value == "action_required":
+        if self.native_value == "Action required":
             return "mdi:alert"
         return "mdi:check-circle"
 
@@ -1872,26 +1958,37 @@ class KegNextActionDateTimeSensor(KegSensor):
     _attr_translation_key = "next_action_time_remaining"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    
+    def __init__(self, coordinator, device, state):
+        super().__init__(coordinator, device, state)
+        self._cached_value = None
+
     @property
     def name(self):
         """Return the name of the sensor."""
         return "Next Action"
 
-    
     @property
     def native_value(self):
-        """Return next-action state; use \"now\" when imminently due."""
+        """Return the next-action timestamp, stable against per-second server churn."""
         device = self._get_latest_device()
         if not device:
+            return self._cached_value
+
+        new_value = _next_action_state(device.get("process_estimate_remaining"))
+        if new_value is None:
+            self._cached_value = None
             return None
-        return _next_action_state(device.get("process_estimate_remaining"))
 
-    @property
-    def available(self):
-        """Return True when a next action timestamp is available."""
-        return self.native_value is not None
+        now = datetime.now(timezone.utc)
+        if new_value <= now:
+            if self._cached_value is not None and self._cached_value <= now:
+                return self._cached_value
+            self._cached_value = now.replace(second=0, microsecond=0)
+            return self._cached_value
 
+        if new_value != self._cached_value:
+            self._cached_value = new_value
+        return self._cached_value
 
     @property
     def entity_category(self):
@@ -1907,6 +2004,7 @@ class KegNextActionDateTimeSensor(KegSensor):
     def unique_id(self):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_next_action_time_remaining"
+
 
 
 class KegSessionIdSensor(KegSensor):
@@ -1928,11 +2026,6 @@ class KegSessionIdSensor(KegSensor):
             return None
         session_id, _ = _session_id_from_device_dict(device)
         return session_id
-
-    @property
-    def available(self):
-        """Return True when an active session is present."""
-        return self.native_value is not None
 
     @property
     def icon(self):
@@ -1978,11 +2071,6 @@ class KegSessionStartedSensor(KegSensor):
         return None
 
     @property
-    def available(self):
-        """Return True when active session start is known."""
-        return self.native_value is not None
-
-    @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:calendar-start"
@@ -2020,8 +2108,8 @@ class CraftTempControlPowerSensor(CraftSensor):
 
     @property
     def available(self):
-        """Return True once real-time telemetry with a control-power reading has arrived."""
-        return _telemetry_temp_control_power(self.coordinator, self.device_id) is not None
+        """Keep the entity visible even before the first peltier reading arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def icon(self):
@@ -2061,8 +2149,8 @@ class KegTempControlPowerSensor(KegSensor):
 
     @property
     def available(self):
-        """Return True once real-time telemetry with a control-power reading has arrived."""
-        return _telemetry_temp_control_power(self.coordinator, self.device_id) is not None
+        """Keep the entity visible even before the first peltier reading arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def icon(self):
@@ -2104,8 +2192,8 @@ class CraftPeltierFanPowerSensor(CraftSensor):
 
     @property
     def available(self):
-        """Return True when a non-zero fan power telemetry value has arrived."""
-        return self.native_value is not None
+        """Keep the entity visible even before the first fan telemetry arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def icon(self):
@@ -2147,8 +2235,8 @@ class KegPeltierFanPowerSensor(KegSensor):
 
     @property
     def available(self):
-        """Return True when a non-zero fan power telemetry value has arrived."""
-        return self.native_value is not None
+        """Keep the entity visible even before the first fan telemetry arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def icon(self):
@@ -2189,11 +2277,6 @@ class CraftEspCoreTempSensor(CraftSensor):
         )
 
     @property
-    def available(self):
-        """Return True once an ESP core temperature reading has arrived."""
-        return self.native_value is not None
-
-    @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:chip"
@@ -2232,11 +2315,6 @@ class KegEspCoreTempSensor(KegSensor):
         )
 
     @property
-    def available(self):
-        """Return True once an ESP core temperature reading has arrived."""
-        return self.native_value is not None
-
-    @property
     def icon(self):
         """Return the icon for the sensor."""
         return "mdi:chip"
@@ -2267,11 +2345,10 @@ class CraftButtonSensor(CraftSensor):
         value = _telemetry_sensor_value(self.coordinator, self.device_id, SensorType.BUTTON)
         return _button_state(value)
 
-    
     @property
     def available(self):
-        """Return True once a button telemetry value has arrived."""
-        return self.native_value is not None
+        """Keep the entity visible even before the first button telemetry arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     
     @property
@@ -2307,11 +2384,10 @@ class KegButtonSensor(KegSensor):
         value = _telemetry_sensor_value(self.coordinator, self.device_id, SensorType.BUTTON)
         return _button_state(value)
 
-    
     @property
     def available(self):
-        """Return True once a button telemetry value has arrived."""
-        return self.native_value is not None
+        """Keep the entity visible even before the first button telemetry arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     
     @property
@@ -2346,8 +2422,8 @@ class CraftPeltierModeSensor(CraftSensor):
 
     @property
     def available(self):
-        """Return True when Peltier telemetry has arrived."""
-        return _telemetry_temp_control_power(self.coordinator, self.device_id) is not None
+        """Keep the entity visible even before the first peltier reading arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def icon(self):
@@ -2380,8 +2456,8 @@ class KegPeltierModeSensor(KegSensor):
 
     @property
     def available(self):
-        """Return True when Peltier telemetry has arrived."""
-        return _telemetry_temp_control_power(self.coordinator, self.device_id) is not None
+        """Keep the entity visible even before the first peltier reading arrives."""
+        return self.coordinator.last_update_success and self._get_latest_device() is not None
 
     @property
     def icon(self):

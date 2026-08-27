@@ -41,7 +41,13 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "realtime_connected": {
+        "name": "MQTT"
+      }
+    },
     "sensor": {
+      "name": "Brew stage",
       "brew_stage": {
         "name": "Brew stage"
       },
@@ -59,7 +65,7 @@
         }
       },
       "last_time_online": {
-        "name": "Last time online"
+        "name": "Online since"
       },
       "update_status": {
         "name": "Update status",
