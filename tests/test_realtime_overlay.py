@@ -184,6 +184,63 @@ def test_realtime_manager_ignores_countdown_only_changes():
 
     assert len(calls) == 1
 
+
+def test_realtime_manager_disconnects_stale_client_before_reconnect():
+    import asyncio
+
+    class _FakeMqtt:
+        def __init__(self, name):
+            self.name = name
+            self.disconnected = 0
+            self.connected = 0
+
+        def on_device_log(self, *args, **kwargs):
+            pass
+
+        def on_connected(self, *args, **kwargs):
+            pass
+
+        def on_disconnected(self, *args, **kwargs):
+            pass
+
+        def on_error(self, *args, **kwargs):
+            pass
+
+        def connect(self):
+            self.connected += 1
+
+        def disconnect(self):
+            self.disconnected += 1
+
+    class _FakeLoop:
+        def call_soon_threadsafe(self, callback):
+            callback()
+
+    class _FakeHass:
+        def __init__(self):
+            self.loop = _FakeLoop()
+
+        async def async_add_executor_job(self, func, *args):
+            return func(*args)
+
+    class _FakeCoordinator:
+        def async_update_listeners(self):
+            return None
+
+    existing = _FakeMqtt("old")
+    new_client = _FakeMqtt("new")
+    hass = _FakeHass()
+    coordinator = _FakeCoordinator()
+    client = SimpleNamespace(create_mqtt_client=lambda: new_client)
+    manager = realtime.MiniBrewRealtimeManager(hass, coordinator, client)
+    manager._mqtt = existing
+
+    asyncio.run(manager._async_do_connect())
+
+    assert existing.disconnected == 1
+    assert manager._mqtt is new_client
+    assert new_client.connected == 1
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
