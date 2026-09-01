@@ -121,8 +121,26 @@ class MiniBrewRealtimeManager:
         self._stopped = False
         await self._async_do_connect()
 
+    def _dispose_mqtt_client(self, mqtt=None):
+        """Disconnect an MQTT client and drop our reference to it.
+
+        This avoids leaking stale paho sockets and threads when the broker is
+        unavailable or a connection attempt fails and we immediately retry.
+        """
+        mqtt = self._mqtt if mqtt is None else mqtt
+        if mqtt is None:
+            return
+        try:
+            mqtt.disconnect()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("MiniBrew realtime: error during disconnect: %s", err)
+        if self._mqtt is mqtt:
+            self._mqtt = None
+
     async def _async_do_connect(self):
         """Internal: create the MQTT client and connect. Called from async_start and reconnect."""
+        if self._mqtt is not None:
+            self._dispose_mqtt_client()
         try:
             self._mqtt = await self.hass.async_add_executor_job(self._client.create_mqtt_client)
         except Exception as err:  # noqa: BLE001 - never break REST polling
@@ -142,6 +160,7 @@ class MiniBrewRealtimeManager:
             _LOGGER.info("MiniBrew realtime: MQTT connect() returned (waiting for on_connected callback)")
         except Exception as err:  # noqa: BLE001 - never break REST polling
             _LOGGER.warning("MiniBrew realtime: could not connect to MQTT broker: %s", err)
+            self._dispose_mqtt_client(self._mqtt)
             self._schedule_reconnect()
 
     def async_ensure_subscribed(self, serials):
@@ -184,13 +203,13 @@ class MiniBrewRealtimeManager:
         if self._reconnect_task is not None:
             self._reconnect_task.cancel()
             self._reconnect_task = None
-        if self._mqtt is None:
-            return
-        mqtt, self._mqtt = self._mqtt, None
-        try:
-            await self.hass.async_add_executor_job(mqtt.disconnect)
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("MiniBrew realtime: error during disconnect: %s", err)
+        if self._mqtt is not None:
+            mqtt = self._mqtt
+            self._mqtt = None
+            try:
+                await self.hass.async_add_executor_job(mqtt.disconnect)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("MiniBrew realtime: error during disconnect: %s", err)
         self._connected = False
 
     def _schedule_reconnect(self):
@@ -266,6 +285,7 @@ class MiniBrewRealtimeManager:
         """Mark disconnected, refresh entity availability, and schedule reconnect (paho thread)."""
         self._connected = False
         _LOGGER.warning("MiniBrew realtime: MQTT disconnected — will retry in %s s", _RECONNECT_DELAY)
+        self._dispose_mqtt_client()
         self.hass.loop.call_soon_threadsafe(self.coordinator.async_update_listeners)
         self._schedule_reconnect()
 
