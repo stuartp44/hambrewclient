@@ -37,6 +37,27 @@ jobs:
             didn't match the configured pattern. Please ensure that the subject
             doesn't start with an uppercase character.
 
+  validate-tests:
+    runs-on: ubuntu-latest
+    name: Run tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+
+      - name: Run unit tests
+        run: python -m pytest -q tests
+
   validate-hacs:
     runs-on: ubuntu-latest
     name: Validate HACS
