@@ -8,9 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- Require `pymbrewclient>=1.11.0` to align with SensorType telemetry support
+- Require `pymbrewclient>=1.11.1` for SensorType telemetry support and automatic MQTT log requests and recovery
 
 ### Fixed
+- Request frequent MQTT logs and recover stalled telemetry through the updated library, without relying on an open MiniBrew portal or iOS app
 - Handle Device objects returned by the API without setup errors
 
 ### Added
