@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1](https://github.com/stuartp44/hambrewclient/compare/v0.11.0...v0.11.1) (2026-10-10)
+
+
+### Fixed
+
+* **release:** publish MQTT log recovery in 0.11.1 ([3412332](https://github.com/stuartp44/hambrewclient/commit/341233262c518d2b1c0253203f7b2d7d7df1c8fb))
+* **release:** publish MQTT log recovery in 0.11.1 ([646897e](https://github.com/stuartp44/hambrewclient/commit/646897ebbd6ec2767b1c1d4d4c0b4dc94250230b))
+
 ## [Unreleased]
 
 ### Changed
