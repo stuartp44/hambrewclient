@@ -1,5 +1,5 @@
 import logging
-from dataclasses import asdict, is_dataclass
+from dataclasses import fields, is_dataclass
 from datetime import datetime, timedelta, timezone
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
@@ -93,11 +93,18 @@ def _device_to_dict(device):
         return device
     if isinstance(device, Device):
         if is_dataclass(device):
-            return asdict(device)
+            return {field.name: getattr(device, field.name) for field in fields(device)}
         return device.__dict__
     if hasattr(device, "__dict__"):
         return device.__dict__
     return {}
+
+
+def _device_serial(device):
+    """Read a serial without converting the entire device payload."""
+    if isinstance(device, dict):
+        return device.get("serial_number")
+    return getattr(device, "serial_number", None)
 
 
 def _coerce_timestamp(value):
@@ -231,7 +238,7 @@ def _collect_serials(coordinator, data=None):
         return serials
     for devices in overview.__dict__.values():
         for device_data in devices:
-            serial = _device_to_dict(device_data).get("serial_number")
+            serial = _device_serial(device_data)
             if serial:
                 serials.add(serial)
     return serials
@@ -371,8 +378,7 @@ def _current_stage_group(coordinator, device_id):
     """Return the top-level overview group for a device serial."""
     for group_name, devices in coordinator.data.__dict__.items():
         for dev in devices:
-            device_dict = _device_to_dict(dev)
-            if device_dict.get("serial_number") == device_id:
+            if _device_serial(dev) == device_id:
                 return group_name
     return "unknown"
 
@@ -554,8 +560,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         
         for state, devices in coordinator.data.__dict__.items():  # Access states dynamically
             for device_data in devices:
-                device_dict = _device_to_dict(device_data)
-                serial_number = device_dict.get("serial_number")
+                serial_number = _device_serial(device_data)
                 if not serial_number:
                     continue
                 
@@ -566,6 +571,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     continue
 
                 # Convert the raw dictionary to a Device object
+                device_dict = _device_to_dict(device_data)
                 device = device_data if isinstance(device_data, Device) else Device(**device_dict)
 
                 # Add sensors for MiniBrew devices
@@ -727,8 +733,8 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
         """
         devices = getattr(self.data, state, [])
         for dev in devices:
-            device_dict = _device_to_dict(dev)
-            if device_dict.get("serial_number") == serial:
+            if _device_serial(dev) == serial:
+                device_dict = _device_to_dict(dev)
                 merged = dict(device_dict)
                 if self.realtime_enabled:
                     _overlay_mqtt(merged, self.get_telemetry(serial))

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Fixed
+- Avoid recursive device-data copying and unnecessary conversions during sensor state reads and MQTT-driven discovery updates ([#37](https://github.com/stuartp44/hambrewclient/issues/37))
 
 * **release:** publish MQTT log recovery in 0.11.1 ([3412332](https://github.com/stuartp44/hambrewclient/commit/341233262c518d2b1c0253203f7b2d7d7df1c8fb))
 * **release:** publish MQTT log recovery in 0.11.1 ([646897e](https://github.com/stuartp44/hambrewclient/commit/646897ebbd6ec2767b1c1d4d4c0b4dc94250230b))
