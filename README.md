@@ -83,6 +83,7 @@ After adding the integration, you can configure additional options:
 
 - **Real-time discovery interval**: How often to refresh discovery and fallback data from REST while MQTT drives live telemetry (default: 300 seconds)
 - Some MQTT-backed sensors only appear once the device publishes the relevant telemetry. If the device is connected but a value is still unavailable, Home Assistant may show `Unknown` until that field arrives.
+- The integration requests frequent device logs automatically and re-requests them after five seconds without incoming telemetry. Opening the MiniBrew portal or iOS app should not be necessary to start the stream; offline devices still cannot provide live data.
 
 To access options:
 1. Go to **Settings** → **Devices & Services**
@@ -94,7 +95,7 @@ To access options:
 - Home Assistant 2023.1 or newer
 - MiniBrew account with registered devices
 - **MiniBrew Pro subscription** (required for API access)
-- [`pymbrewclient>=1.11.0`](https://github.com/stuartp44/pymbrewclient/releases/tag/v1.11.0) (automatically installed)
+- [`pymbrewclient>=1.11.1`](https://github.com/stuartp44/pymbrewclient/releases/tag/v1.11.1) (automatically installed)
 
 ## Dependencies
 

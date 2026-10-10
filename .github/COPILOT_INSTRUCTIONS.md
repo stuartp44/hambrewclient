@@ -27,9 +27,9 @@ This is a **Home Assistant custom component** for integrating MiniBrew Craft and
 
 1. **Automatic Release** (`.github/workflows/release.yml`)
    - Triggers on push to main
-   - Uses semantic-release to determine version from commits
-   - Waits for all validation checks to pass before releasing
-   - Updates manifest.json version automatically
+   - Waits for all validation checks to pass, then runs Release Please
+   - Release Please opens/updates a release PR with the version bump (manifest.json) and CHANGELOG.md entry
+   - Merging the release PR tags the commit and publishes the GitHub release
 
 2. **Draft Release** (`.github/workflows/draft-release.yml`)
    - Manual workflow dispatch or preview tags (v*-preview*, v*-beta*, v*-alpha*, v*-rc*)
@@ -73,7 +73,7 @@ This is a **Home Assistant custom component** for integrating MiniBrew Craft and
 
 ### 8. Dependencies & Tools
 - **Dependabot** configured for GitHub Actions and Python dependencies
-- **Semantic-release** for version management
+- **Release Please** for version management and release PRs
 - **Commitlint** for commit message validation
 - **Git hooks** for local validation (scripts/commit-msg)
 
@@ -85,7 +85,7 @@ This is a **Home Assistant custom component** for integrating MiniBrew Craft and
 
 ### 10. Key Files to Never Modify Without Care
 - `manifest.json` - Must maintain exact structure and ordering
-- `pyproject.toml` - Semantic-release configuration
+- `release-please-config.json` / `.release-please-manifest.json` - Release Please configuration
 - `.commitlintrc.json` - Commit validation rules
 - Workflow files - Critical for CI/CD
 
@@ -125,26 +125,26 @@ Always include when relevant:
 - Main branch is protected
 - All changes via PRs
 - PRs require conventional commit titles
-- Auto-release on merge to main
+- Release Please opens/updates a release PR; merging it tags and publishes the release
 - Draft releases for manual review
 - Preview releases for PR testing
 
 ## Development Setup
 - Run `./scripts/setup-dev.sh` for environment setup
 - Installs git hooks for commit validation
-- Optional: semantic-release and commitlint tools
+- Optional: commitlint tools
 
 ## When Making Changes
 1. Always follow conventional commits
 2. Update relevant documentation
 3. Ensure validation checks pass
 4. Consider if README needs updating
-5. Check if manifest.json needs version bump (auto-handled by semantic-release)
+5. Check if manifest.json needs version bump (auto-handled by Release Please)
 6. No emojis anywhere
 
 ## File Paths Reference
 - Integration: `custom_components/minibrew/`
 - Workflows: `.github/workflows/`
 - Docs: `README.md`, `CONTRIBUTING.md`, `.github/RELEASE_WORKFLOWS.md`
-- Config: `pyproject.toml`, `.commitlintrc.json`, `.github/dependabot.yml`
+- Config: `release-please-config.json`, `.release-please-manifest.json`, `.commitlintrc.json`, `.github/dependabot.yml`
 - Scripts: `scripts/commit-msg`, `scripts/setup-dev.sh`

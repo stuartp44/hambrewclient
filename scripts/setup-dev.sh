@@ -22,20 +22,6 @@ else
     echo "Warning: .git directory not found, skipping Git hooks"
 fi
 
-# Install Python dependencies (optional)
-echo ""
-echo "Python development dependencies..."
-read -p "Do you want to install Python semantic-release tools? (y/n) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    if command -v pip &> /dev/null; then
-        pip install python-semantic-release
-        echo "Python semantic-release installed"
-    else
-        echo "Warning: pip not found, skipping Python dependencies"
-    fi
-fi
-
 # Install Node.js dependencies for commitlint (optional)
 echo ""
 echo "Node.js development dependencies..."

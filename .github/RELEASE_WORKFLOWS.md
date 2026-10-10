@@ -9,17 +9,15 @@ This project has three release workflows:
 **Triggers:** Automatically on every push to `main` branch
 
 **What it does:**
-- Uses semantic-release to analyze commit messages
-- Automatically determines version number based on commit types
-- Creates and publishes release immediately
-- Updates manifest.json version
-- Generates changelog from commits
+- Uses [Release Please](https://github.com/googleapis/release-please) to analyze commit messages
+- Opens or updates a standing "chore(main): release X.Y.Z" pull request containing the version bump (`custom_components/minibrew/manifest.json`) and a `CHANGELOG.md` entry
+- Only tags the release and publishes the GitHub release once that pull request is merged to `main`
 
 **Version bump rules:**
 - Minor: `feat`
 - Patch: `fix`, `perf`, `ci`, `build`, `chore`
 
-**Usage:** Just merge your PR to main with proper conventional commit messages.
+**Usage:** Merge your PR to main with proper conventional commit messages, then review and merge the release PR that Release Please opens/updates to actually cut the release.
 
 ---
 
