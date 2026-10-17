@@ -58,6 +58,7 @@ def _load_sensor_reads():
     names = {
         "_device_to_dict",
         "_device_serial",
+        "_firmware_version",
         "_coerce_session_id",
         "_session_id_from_device_dict",
         "_overlay_mqtt",
@@ -126,6 +127,27 @@ def _load_sensor_reads():
 
 
 sensor = _load_sensor_reads()
+
+
+@pytest.mark.parametrize("class_name", ["CraftSensor", "KegSensor"])
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("3.2.3, idf-v4.2-50-g11005797d", "3.2.3"),
+        ("3.2.3,idf-v4.2-50-g11005797d", "3.2.3"),
+        ("3.2.3", "3.2.3"),
+        ("3.2.3, other-build", "3.2.3, other-build"),
+        (None, None),
+        ("", ""),
+    ],
+)
+def test_device_firmware_hides_only_idf_suffix(class_name, raw, expected):
+    device = SimpleNamespace(
+        serial_number="serial-1", title="MiniBrew", software_version=raw
+    )
+    entity = getattr(sensor, class_name)(None, device, "serving")
+    assert entity._attr_device_info["sw_version"] == expected
+    assert device.software_version == raw
 
 
 def _coordinator(groups, *, telemetry=None):

@@ -92,6 +92,7 @@ To access options:
 
 ### Sensor availability and connectivity
 
+- Device information displays the MiniBrew firmware version without its ESP-IDF build suffix (for example, `3.2.3` instead of `3.2.3, idf-v4.2-50-g11005797d`). The original API value is unchanged.
 - **Unavailable** means the sensor's required data source cannot currently provide data. Current temperatures, target temperatures, and action reminders require a positive cloud online status or fresh device telemetry. Firmware update and cleaning status require an online device in a successful cloud response.
 - **Unknown** means the required source is reachable but the individual value is absent. Missing action data is not treated as "No action required", and valid zero measurements are not hidden.
 - Beer metadata, current stage, and session metadata remain available while a device is offline if a successful cloud response still supplies that device. Missing metadata, such as a session ID when no session is active, reports `Unknown`.

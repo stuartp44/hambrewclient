@@ -107,6 +107,16 @@ def _device_serial(device):
     return getattr(device, "serial_number", None)
 
 
+def _firmware_version(version: str | None) -> str | None:
+    """Hide the ESP-IDF build suffix in device information."""
+    if version is None:
+        return None
+    firmware, separator, build = version.partition(",")
+    if separator and build.strip().startswith("idf-"):
+        return firmware.strip()
+    return version
+
+
 def _coerce_timestamp(value):
     if value in (None, ""):
         return None
@@ -954,7 +964,7 @@ class CraftSensor(SensorEntity):
             "name": device.title,
             "manufacturer": "MiniBrew",
             "model": "Craft",
-            "sw_version": device.software_version,
+            "sw_version": _firmware_version(device.software_version),
             "serial_number": device.serial_number,
         }
 
@@ -1524,7 +1534,7 @@ class KegSensor(SensorEntity):
             "name": device.title,
             "manufacturer": "MiniBrew",
             "model": "Smart Keg",
-            "sw_version": device.software_version,
+            "sw_version": _firmware_version(device.software_version),
             "serial_number": device.serial_number,
         }
 
