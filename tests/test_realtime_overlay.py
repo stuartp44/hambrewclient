@@ -67,9 +67,15 @@ def test_next_action_at_maps_to_process_estimate_remaining():
     assert device["process_estimate_remaining"] == when
 
 
-def test_user_action_zero_does_not_clobber_non_zero_rest():
+def test_user_action_zero_clears_non_zero_rest():
     device = {"user_action": 5}
     realtime.overlay_mqtt(device, _telemetry(user_action=0))
+    assert device["user_action"] == 0
+
+
+def test_missing_user_action_preserves_rest():
+    device = {"user_action": 5}
+    realtime.overlay_mqtt(device, _telemetry(user_action=None))
     assert device["user_action"] == 5
 
 
@@ -138,7 +144,7 @@ def test_realtime_manager_skips_duplicate_packets():
     manager._handle_device_log(msg)
     manager._handle_device_log(msg)
 
-    assert len(calls) == 1
+    assert calls.count(coordinator.async_update_listeners) == 1
 
 
 def test_realtime_manager_ignores_countdown_only_changes():
@@ -182,7 +188,7 @@ def test_realtime_manager_ignores_countdown_only_changes():
     manager._handle_device_log(first)
     manager._handle_device_log(second)
 
-    assert len(calls) == 1
+    assert calls.count(coordinator.async_update_listeners) == 1
 
 
 def test_realtime_manager_disconnects_stale_client_before_reconnect():
@@ -240,6 +246,99 @@ def test_realtime_manager_disconnects_stale_client_before_reconnect():
     assert existing.disconnected == 1
     assert manager._mqtt is new_client
     assert new_client.connected == 1
+
+
+def _manager_with_device():
+    from unittest.mock import Mock
+
+    loop = SimpleNamespace(
+        call_soon_threadsafe=lambda callback: callback(),
+        call_later=Mock(return_value=Mock()),
+    )
+    coordinator = SimpleNamespace(async_update_listeners=Mock())
+    manager = realtime.MiniBrewRealtimeManager(
+        SimpleNamespace(loop=loop), coordinator, client=None
+    )
+    manager._connected = True
+    manager._handle_device_log(_telemetry(device_uuid="serial-1", user_action=5))
+    return manager, coordinator
+
+
+def test_disconnect_clears_telemetry_and_reconnect_does_not_resurrect_it():
+    manager, _ = _manager_with_device()
+    assert manager.get_telemetry("serial-1").user_action == 5
+    manager._stopped = True  # Do not schedule a real reconnect in this unit test.
+    manager._handle_disconnected()
+    assert manager.get_telemetry("serial-1") is None
+    assert manager._telemetry == {}
+    assert manager._fingerprints == {}
+    manager._connected = True
+    assert manager.get_telemetry("serial-1") is None
+    manager._stopped = False
+    manager._handle_device_log(_telemetry(device_uuid="serial-1", user_action=0))
+    assert manager.get_telemetry("serial-1").user_action == 0
+
+
+def test_telemetry_expires_at_exact_freshness_limit():
+    from datetime import datetime, timedelta, timezone
+    from unittest.mock import patch
+
+    manager, coordinator = _manager_with_device()
+    received = datetime(2026, 10, 17, tzinfo=timezone.utc)
+    manager._last_received["serial-1"] = received
+    with patch.object(realtime, "datetime") as clock:
+        clock.now.return_value = received + timedelta(seconds=59, milliseconds=999)
+        assert manager.get_telemetry("serial-1") is not None
+        clock.now.return_value = received + timedelta(seconds=60)
+        assert manager.get_telemetry("serial-1") is None
+        calls = coordinator.async_update_listeners.call_count
+        manager._async_expire_telemetry("serial-1")
+        assert coordinator.async_update_listeners.call_count == calls + 1
+    assert manager._telemetry == {}
+
+
+def test_identical_packets_refresh_freshness_without_state_churn():
+    from datetime import timedelta
+
+    manager, coordinator = _manager_with_device()
+    manager._last_received["serial-1"] -= timedelta(seconds=59)
+    old_received = manager._last_received["serial-1"]
+    calls = coordinator.async_update_listeners.call_count
+    manager._handle_device_log(_telemetry(device_uuid="serial-1", user_action=5))
+    assert manager._last_received["serial-1"] > old_received
+    assert coordinator.async_update_listeners.call_count == calls
+    assert manager.hass.loop.call_later.call_args.args[0] == 60
+
+
+def test_invalid_packet_cannot_refresh_telemetry():
+    manager, _ = _manager_with_device()
+    received = manager._last_received["serial-1"]
+    manager._handle_device_log(
+        _telemetry(device_uuid="serial-1", user_action=0, decode_error="bad payload")
+    )
+    assert manager._last_received["serial-1"] == received
+    assert manager.get_telemetry("serial-1").user_action == 5
+
+
+def test_expiry_callback_cannot_delete_a_packet_received_before_rescheduling():
+    manager, coordinator = _manager_with_device()
+    calls = coordinator.async_update_listeners.call_count
+    manager._async_expire_telemetry("serial-1")
+    assert manager.get_telemetry("serial-1") is not None
+    assert coordinator.async_update_listeners.call_count == calls
+    assert manager.hass.loop.call_later.call_args.args[0] > 0
+
+
+def test_identical_packet_after_silence_notifies_recovery():
+    from datetime import timedelta
+
+    manager, coordinator = _manager_with_device()
+    manager._last_received["serial-1"] -= timedelta(seconds=60)
+    assert manager.get_telemetry("serial-1") is None
+    calls = coordinator.async_update_listeners.call_count
+    manager._handle_device_log(_telemetry(device_uuid="serial-1", user_action=5))
+    assert manager.get_telemetry("serial-1") is not None
+    assert coordinator.async_update_listeners.call_count == calls + 1
 
 if __name__ == "__main__":
     failures = 0
