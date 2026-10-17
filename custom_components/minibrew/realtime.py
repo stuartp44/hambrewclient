@@ -125,11 +125,11 @@ class MiniBrewRealtimeManager:
         await self._async_do_connect()
 
     async def async_set_online_devices(self, online_serials):
-        """Let successful REST discovery control MQTT connections and retries."""
+        """Reconcile devices REST confirms are online with an active process."""
         self._online_serials = set(online_serials)
         if not self._online_serials:
             if not self._stopped:
-                _LOGGER.info("MiniBrew realtime: pausing MQTT until REST reports an online device")
+                _LOGGER.info("MiniBrew realtime: pausing MQTT until REST reports an online device with an active process")
                 await self.async_stop()
             return
         for serial in self._subscribed - self._online_serials:

@@ -38,6 +38,16 @@ class ProcessPhase(IntEnum):
     FERM_PRIMARY = 1
 
 
+class ProcessType(IntEnum):
+    PROC_IDLE = 0
+    PROC_BREWING = 1
+    PROC_CLEAN_MINIBREW = 2
+    PROC_CLEAN_KEG = 3
+    PROC_FERMENTATION = 4
+    PROC_SERVING = 5
+    PROC_ACID_CLEAN_MINIBREW = 6
+
+
 class SensorType(IntEnum):
     PELTIER_FAN_POWER = 1
     ESP_CORE_TEMP = 2
@@ -66,7 +76,7 @@ def _load_sensor_reads():
         "_process_phase_display",
         "_is_custom_fermentation_mode",
         "_collect_serials",
-        "_online_serials",
+        "_mqtt_serials",
         "_is_auth_error",
         "_merge_last_time_online_from_devices",
         "_coerce_timestamp",
@@ -104,6 +114,7 @@ def _load_sensor_reads():
     namespace = {
         "Device": Device,
         "ProcessPhase": ProcessPhase,
+        "ProcessType": ProcessType,
         "SensorType": SensorType,
         "SensorDeviceClass": SimpleNamespace(ENUM="enum", TIMESTAMP="timestamp"),
         "SensorStateClass": SimpleNamespace(MEASUREMENT="measurement"),
@@ -637,11 +648,15 @@ def test_mqtt_diagnostic_stays_available_when_cloud_fails(connected):
 
 
 @pytest.mark.parametrize("online", [True, False, None])
-def test_rest_refresh_controls_mqtt_gate(online):
+@pytest.mark.parametrize("process_type", [None, 0, 1, 2, 3, 4, 5, 6, 99, "invalid"])
+def test_rest_refresh_controls_mqtt_gate(online, process_type):
     import asyncio
     from unittest.mock import AsyncMock
 
-    overview = SimpleNamespace(serving=[{"serial_number": "serial-1", "online": online}])
+    overview = SimpleNamespace(serving=[{
+        "serial_number": "serial-1", "online": online,
+        "process_type": process_type, "active_session": 42,
+    }])
     coordinator = _coordinator({})
     coordinator.client = SimpleNamespace(
         get_brewery_overview=Mock(return_value=overview),
@@ -656,8 +671,29 @@ def test_rest_refresh_controls_mqtt_gate(online):
     coordinator.hass.async_add_executor_job = executor
     assert asyncio.run(coordinator._async_update_data()) is overview
     coordinator.realtime.async_set_online_devices.assert_awaited_once_with(
-        {"serial-1"} if online is True else set()
+        {"serial-1"} if online is True and process_type in {1, 2, 3, 4, 5, 6} else set()
     )
+
+
+def test_mqtt_gate_ignores_stale_session_and_stage_and_supports_sessionless_cleaning():
+    overview = SimpleNamespace(
+        fermenting=[{
+            "serial_number": "idle", "online": True,
+            "process_type": 0, "active_session": 42,
+        }],
+        brew_clean_idle=[{
+            "serial_number": "cleaning", "online": True,
+            "process_type": 2, "active_session": None,
+        }],
+        serving=[{
+            "serial_number": "offline", "online": False,
+            "process_type": 5, "active_session": 43,
+        }],
+    )
+    assert sensor._mqtt_serials(overview) == {"cleaning"}
+    assert sensor._mqtt_serials(None) == set()
+    overview.brew_clean_idle[0]["process_type"] = 0
+    assert sensor._mqtt_serials(overview) == set()
 
 
 @pytest.mark.parametrize("error", [ConnectionError("network down"), PermissionError("401 unauthorized")])

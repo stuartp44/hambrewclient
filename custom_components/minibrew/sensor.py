@@ -8,7 +8,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_registry import RegistryEntryDisabler
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from pymbrewclient import Device, ProcessPhase, SensorType
+from pymbrewclient import Device, ProcessPhase, ProcessType, SensorType
 
 from .const import (
     CONF_REALTIME_POLL_INTERVAL,
@@ -263,16 +263,24 @@ def _collect_serials(coordinator, data=None):
     return serials
 
 
-def _online_serials(data):
-    """Return only devices explicitly reported online by REST."""
+def _mqtt_serials(data):
+    """Require REST to confirm both connectivity and a known active process."""
     if data is None:
         return set()
-    return {
-        _device_serial(device)
-        for devices in data.__dict__.values()
-        for device in devices
-        if _device_to_dict(device).get("online") is True and _device_serial(device)
-    }
+    serials = set()
+    for devices in data.__dict__.values():
+        for device in devices:
+            payload = _device_to_dict(device)
+            if payload.get("online") is not True:
+                continue
+            try:
+                process = ProcessType(payload.get("process_type"))
+            except (TypeError, ValueError):
+                continue
+            serial = _device_serial(device)
+            if serial and process != ProcessType.PROC_IDLE:
+                serials.add(serial)
+    return serials
 
 
 def _is_auth_error(err: Exception) -> bool:
@@ -580,7 +588,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     if coordinator.realtime_enabled:
         manager = MiniBrewRealtimeManager(hass, coordinator, client)
         coordinator.realtime = manager
-        await manager.async_start(_online_serials(coordinator.data))
+        await manager.async_start(_mqtt_serials(coordinator.data))
 
     _LOGGER.debug("MiniBrew sensor setup complete: devices=%s realtime_enabled=%s", len(_collect_serials(coordinator)), coordinator.realtime_enabled)
     
@@ -732,7 +740,7 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
 
         # REST connectivity is authoritative for opening the MQTT stream.
         if self.realtime is not None:
-            await self.realtime.async_set_online_devices(_online_serials(data))
+            await self.realtime.async_set_online_devices(_mqtt_serials(data))
 
         return data
 
