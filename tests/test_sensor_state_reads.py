@@ -287,12 +287,13 @@ def test_rest_session_precedence_and_inactive_session_cleanup_preserved():
         coordinator.get_merged_device("serial-1", "fermenting")["active_session"] == 42
     )
     coordinator._active_session_by_serial["serial-1"] = None
+    device["active_session"] = None
     merged = coordinator.get_merged_device("serial-1", "fermenting")
     assert "active_session" not in merged
     assert "session_created" not in merged
     assert device == {
         "serial_number": "serial-1",
-        "active_session": 42,
+        "active_session": None,
         "session_created": "stale",
     }
 
@@ -694,6 +695,62 @@ def test_mqtt_gate_ignores_stale_session_and_stage_and_supports_sessionless_clea
     assert sensor._mqtt_serials(None) == set()
     overview.brew_clean_idle[0]["process_type"] = 0
     assert sensor._mqtt_serials(overview) == set()
+
+
+@pytest.mark.parametrize("prefix", ["Craft", "Keg"])
+def test_portal_idle_response_cannot_restore_ended_session_from_caches(prefix):
+    device = {
+        "serial_number": "serial-1", "online": True, "stage": "Idle",
+        "process_type": 0, "session_id": None, "user_action": 0,
+        "target_temp": None, "current_temp": None, "beer_name": None,
+        "beer_style": None,
+    }
+    when = datetime(2026, 10, 17, tzinfo=timezone.utc)
+    coordinator = _coordinator(
+        {"brew_clean_idle": [device]},
+        telemetry={"serial-1": SimpleNamespace(
+            session_id=82991, process_phase=0, user_action=5,
+            next_action_at=when, target_temperature=18, current_temperature=19.9,
+        )},
+    )
+    coordinator._active_session_by_serial["serial-1"] = 82991
+    coordinator._session_created_by_serial["serial-1"] = when
+    coordinator._session_created_by_id[82991] = when
+    # The entity was originally created while fermenting.
+    for name in (f"{prefix}SessionIdSensor", f"{prefix}SessionStartedSensor"):
+        entity = _entity(name, coordinator, "serial-1", "fermenting")
+        assert entity.available
+        assert entity.native_value is None
+    merged = coordinator.get_merged_device("serial-1", "fermenting")
+    assert merged["user_action"] == 0
+    assert merged["target_temp"] is None
+    assert merged.get("process_estimate_remaining") is None
+    assert sensor._current_stage_group(coordinator, "serial-1") == "brew_clean_idle"
+    assert sensor._mqtt_serials(coordinator.data) == set()
+    coordinator.hass.async_create_task.assert_not_called()
+
+
+def test_session_lookup_finishing_after_reset_does_not_restore_device_cache():
+    import asyncio
+
+    async def scenario():
+        coordinator = _coordinator({})
+        coordinator._session_lookup_inflight = set()
+        coordinator._active_session_by_serial["serial-1"] = 82991
+        when = datetime(2026, 10, 17, tzinfo=timezone.utc)
+
+        async def fetch(session_id):
+            coordinator._active_session_by_serial["serial-1"] = None
+            coordinator._session_created_by_serial.pop("serial-1", None)
+            return when
+
+        coordinator._async_fetch_session_started = fetch
+        await coordinator._async_ensure_session_created("serial-1", 82991)
+        assert "serial-1" not in coordinator._session_created_by_serial
+        assert coordinator._session_lookup_inflight == set()
+        assert coordinator._session_created_by_id[82991] == when
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.parametrize("error", [ConnectionError("network down"), PermissionError("401 unauthorized")])

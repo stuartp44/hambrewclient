@@ -814,7 +814,11 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
             ):
                 merged.pop(key, None)
         rest_session, session_present = _session_id_from_device_dict(merged)
-        if serial in self._active_session_by_serial and self.last_update_success:
+        if (
+            not session_present
+            and serial in self._active_session_by_serial
+            and self.last_update_success
+        ):
             rest_session = self._active_session_by_serial[serial]
             session_present = True
         if telemetry is not None:
@@ -865,6 +869,8 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
                 return
 
             self._session_created_by_id[session_id] = created
+            if self._active_session_by_serial.get(serial) != session_id:
+                return
             self._session_created_by_serial[serial] = created
             _LOGGER.debug("MiniBrew cached session start for %s (%s): %s", serial, session_id, created)
             self.async_update_listeners()
