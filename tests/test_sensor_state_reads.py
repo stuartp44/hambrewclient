@@ -7,7 +7,8 @@ environment needs no Home Assistant or cloud client dependencies.
 import ast
 import dataclasses
 import importlib.util
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
 from enum import IntEnum
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +22,7 @@ _ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "minibrew"
 @dataclasses.dataclass
 class Device:
     serial_number: str
+    online: bool | None = True
     beer_style: str | None = " IPA "
     beer_name: str | None = "Test beer"
     current_temp: float = 20.0
@@ -36,6 +38,27 @@ class ProcessPhase(IntEnum):
     FERM_PRIMARY = 1
 
 
+class ProcessType(IntEnum):
+    PROC_IDLE = 0
+    PROC_BREWING = 1
+    PROC_CLEAN_MINIBREW = 2
+    PROC_CLEAN_KEG = 3
+    PROC_FERMENTATION = 4
+    PROC_SERVING = 5
+    PROC_ACID_CLEAN_MINIBREW = 6
+
+
+class SensorType(IntEnum):
+    PELTIER_FAN_POWER = 1
+    ESP_CORE_TEMP = 2
+    BUTTON = 3
+
+
+class _Coordinator:
+    def async_update_listeners(self):
+        pass
+
+
 def _load_sensor_reads():
     realtime_spec = importlib.util.spec_from_file_location(
         "state_read_realtime", _ROOT / "realtime.py"
@@ -45,6 +68,7 @@ def _load_sensor_reads():
     names = {
         "_device_to_dict",
         "_device_serial",
+        "_firmware_version",
         "_coerce_session_id",
         "_session_id_from_device_dict",
         "_overlay_mqtt",
@@ -52,7 +76,19 @@ def _load_sensor_reads():
         "_process_phase_display",
         "_is_custom_fermentation_mode",
         "_collect_serials",
+        "_mqtt_serials",
+        "_is_auth_error",
         "_merge_last_time_online_from_devices",
+        "_coerce_timestamp",
+        "_next_action_state",
+        "_sensor_available",
+        "_cloud_connection_state",
+        "_display_option",
+        "_user_action_required_state",
+        "_telemetry_sensor_value",
+        "_telemetry_temp_control_power",
+        "_peltier_mode",
+        "_button_state",
         "MiniBrewDataUpdateCoordinator",
         "CraftSensor",
         "CraftBeerStyleSensor",
@@ -63,22 +99,66 @@ def _load_sensor_reads():
     }
     path = _ROOT / "sensor.py"
     tree = ast.parse(path.read_text(), filename=str(path))
-    tree.body = [node for node in tree.body if getattr(node, "name", None) in names]
+    names.update(
+        node.name for node in tree.body
+        if isinstance(node, ast.ClassDef)
+    )
+    tree.body = [
+        node for node in tree.body
+        if getattr(node, "name", None) in names
+        or (
+            isinstance(node, ast.Assign)
+            and isinstance(node.value, (ast.List, ast.Dict))
+        )
+    ]
     namespace = {
         "Device": Device,
         "ProcessPhase": ProcessPhase,
+        "ProcessType": ProcessType,
+        "SensorType": SensorType,
+        "SensorDeviceClass": SimpleNamespace(ENUM="enum", TIMESTAMP="timestamp"),
+        "SensorStateClass": SimpleNamespace(MEASUREMENT="measurement"),
+        "EntityCategory": SimpleNamespace(DIAGNOSTIC="diagnostic"),
+        "_PROCESS_PHASE_OPTIONS": [],
+        "datetime": datetime,
+        "timezone": timezone,
         "fields": dataclasses.fields,
         "is_dataclass": dataclasses.is_dataclass,
         "SensorEntity": object,
-        "DataUpdateCoordinator": object,
+        "DataUpdateCoordinator": _Coordinator,
         "overlay_mqtt": realtime.overlay_mqtt,
+        "MiniBrewRealtimeManager": realtime.MiniBrewRealtimeManager,
         "DOMAIN": "minibrew",
+        "_LOGGER": logging.getLogger(__name__),
+        "UpdateFailed": RuntimeError,
+        "ConfigEntryAuthFailed": PermissionError,
     }
     exec(compile(tree, str(path), "exec"), namespace)
     return SimpleNamespace(**namespace)
 
 
 sensor = _load_sensor_reads()
+
+
+@pytest.mark.parametrize("class_name", ["CraftSensor", "KegSensor"])
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("3.2.3, idf-v4.2-50-g11005797d", "3.2.3"),
+        ("3.2.3,idf-v4.2-50-g11005797d", "3.2.3"),
+        ("3.2.3", "3.2.3"),
+        ("3.2.3, other-build", "3.2.3, other-build"),
+        (None, None),
+        ("", ""),
+    ],
+)
+def test_device_firmware_hides_only_idf_suffix(class_name, raw, expected):
+    device = SimpleNamespace(
+        serial_number="serial-1", title="MiniBrew", software_version=raw
+    )
+    entity = getattr(sensor, class_name)(None, device, "serving")
+    assert entity._attr_device_info["sw_version"] == expected
+    assert device.software_version == raw
 
 
 def _coordinator(groups, *, telemetry=None):
@@ -93,6 +173,7 @@ def _coordinator(groups, *, telemetry=None):
     coordinator._active_session_by_serial = {}
     coordinator._session_created_by_serial = {}
     coordinator._session_created_by_id = {}
+    coordinator._online_since = {}
     coordinator.last_update_success = True
     coordinator.hass = SimpleNamespace(async_create_task=Mock())
     return coordinator
@@ -206,12 +287,13 @@ def test_rest_session_precedence_and_inactive_session_cleanup_preserved():
         coordinator.get_merged_device("serial-1", "fermenting")["active_session"] == 42
     )
     coordinator._active_session_by_serial["serial-1"] = None
+    device["active_session"] = None
     merged = coordinator.get_merged_device("serial-1", "fermenting")
     assert "active_session" not in merged
     assert "session_created" not in merged
     assert device == {
         "serial_number": "serial-1",
-        "active_session": 42,
+        "active_session": None,
         "session_created": "stale",
     }
 
@@ -224,7 +306,7 @@ def test_missing_devices_and_replaced_overview_are_not_stale():
         serving=[{"serial_number": "serial-1", "beer_style": "Lager"}]
     )
     assert sensor._current_stage_group(coordinator, "serial-1") == "serving"
-    assert coordinator.get_merged_device("serial-1", "brew_clean_idle") is None
+    assert coordinator.get_merged_device("serial-1", "brew_clean_idle")["beer_style"] == "Lager"
     assert coordinator.get_merged_device("serial-1", "serving")["beer_style"] == "Lager"
 
 
@@ -272,3 +354,418 @@ def test_slotted_dataclass_device_conversion(monkeypatch):
         "serial_number": "serial-1",
         "beer_style": "IPA",
     }
+
+
+_SENSOR_CLASSES = [
+    name for name, cls in vars(sensor).items()
+    if isinstance(cls, type)
+    and name not in {"CraftSensor", "KegSensor"}
+    and issubclass(cls, (sensor.CraftSensor, sensor.KegSensor))
+]
+_REST_SENSORS = {
+    "CraftBeerStyleSensor", "CraftBeerNameSensor", "CraftSessionIdSensor",
+    "CraftSessionStartedSensor", "CraftSensorCurrentStageSensor",
+    "KegBeerStyleSensor", "KegBeerNameSensor", "KegSessionIdSensor",
+    "KegSessionStartedSensor", "KegCurrentStageSensor",
+}
+_CONNECTION_SENSORS = {"CraftSensorOnlineStatusSensor", "KegOnlineStatusSensor"}
+_REST_DEVICE_SENSORS = {
+    "CraftSensorIsUpdatingSensor", "KegIsUpdatingSensor",
+    "CraftSensorNeedsCleaningSensor", "KegNeedsCleaningSensor",
+}
+_MQTT_SENSORS = {
+    "CraftProcessPhaseSensor", "KegProcessPhaseSensor",
+    "CraftTempControlPowerSensor", "KegTempControlPowerSensor",
+    "CraftPeltierFanPowerSensor", "KegPeltierFanPowerSensor",
+    "CraftEspCoreTempSensor", "KegEspCoreTempSensor",
+    "CraftButtonSensor", "KegButtonSensor",
+    "CraftPeltierModeSensor", "KegPeltierModeSensor",
+}
+
+
+@pytest.mark.parametrize("class_name", _SENSOR_CLASSES)
+@pytest.mark.parametrize(
+    ("rest_ok", "online", "mqtt_ok"),
+    [
+        (True, True, True),
+        (True, False, False),
+        (True, None, False),
+        (True, True, False),
+        (True, False, True),
+        (False, True, False),
+        (False, False, True),
+    ],
+)
+def test_every_sensor_uses_its_required_source(class_name, rest_ok, online, mqtt_ok):
+    device = {"serial_number": "serial-1", "online": online}
+    coordinator = _coordinator(
+        {"serving": [device]},
+        telemetry={"serial-1": SimpleNamespace()} if mqtt_ok else {},
+    )
+    coordinator.last_update_success = rest_ok
+    entity = _entity(class_name, coordinator, "serial-1", "serving")
+    if class_name in _REST_SENSORS:
+        expected = rest_ok
+    elif class_name in _CONNECTION_SENSORS:
+        expected = rest_ok or mqtt_ok
+    elif class_name in _REST_DEVICE_SENSORS:
+        expected = rest_ok and online is True
+    elif class_name in _MQTT_SENSORS:
+        expected = mqtt_ok
+    else:
+        expected = not (rest_ok and online is False) and (
+            mqtt_ok or (rest_ok and online is True)
+        )
+    assert entity.available is expected
+
+
+@pytest.mark.parametrize("class_name", _SENSOR_CLASSES)
+def test_every_sensor_unavailable_without_any_source(class_name):
+    coordinator = _coordinator({})
+    coordinator.last_update_success = False
+    entity = _entity(class_name, coordinator, "serial-1", "serving")
+    assert not entity.available
+
+
+@pytest.mark.parametrize(
+    "class_name",
+    sorted(set(_SENSOR_CLASSES) - {
+        "CraftLastTimeOnlineSensor", "KegLastTimeOnlineSensor",
+        "CraftSensorCurrentStageSensor", "KegCurrentStageSensor",
+        "CraftSensorOnlineStatusSensor", "KegOnlineStatusSensor",
+    }),
+)
+def test_connected_source_with_missing_value_is_unknown(class_name):
+    coordinator = _coordinator(
+        {"serving": [{"serial_number": "serial-1", "online": True}]},
+        telemetry={"serial-1": SimpleNamespace(measurements={})},
+    )
+    entity = _entity(class_name, coordinator, "serial-1", "serving")
+    assert entity.available
+    assert entity.native_value is None
+
+
+@pytest.mark.parametrize("class_name", sorted(_CONNECTION_SENSORS))
+@pytest.mark.parametrize(("online", "expected"), [(True, "Online"), (False, "Offline"), (None, None)])
+def test_cloud_status_does_not_invent_offline_for_missing_status(class_name, online, expected):
+    coordinator = _coordinator({"serving": [{"serial_number": "serial-1", "online": online}]})
+    entity = _entity(class_name, coordinator, "serial-1", "serving")
+    assert entity.available
+    assert entity.native_value == expected
+
+
+@pytest.mark.parametrize("class_name", ["CraftLastTimeOnlineSensor", "KegLastTimeOnlineSensor"])
+def test_online_since_tracks_observed_connection_not_historical_last_seen(class_name, monkeypatch):
+    class Clock(datetime):
+        current = datetime(2026, 10, 17, 10, tzinfo=timezone.utc)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current
+
+    monkeypatch.setitem(sensor.MiniBrewDataUpdateCoordinator.get_online_since.__globals__, "datetime", Clock)
+    device = {"serial_number": "serial-1", "online": True, "last_time_online": Clock.current - timedelta(days=5)}
+    coordinator = _coordinator({"serving": [device]})
+    entity = _entity(class_name, coordinator, "serial-1", "serving")
+    coordinator.async_update_listeners()
+    start = entity.native_value
+    assert start == Clock.current
+    Clock.current += timedelta(minutes=2)
+    assert entity.native_value == start
+    device["online"] = False
+    coordinator.async_update_listeners()
+    assert not entity.available
+    assert entity.native_value is None
+    Clock.current += timedelta(minutes=2)
+    device["online"] = True
+    coordinator.async_update_listeners()
+    assert entity.available
+    assert entity.native_value == Clock.current
+    assert entity.native_value != start
+    assert entity.unique_id == "serial-1_last_time_online"
+
+
+def test_broker_connection_alone_is_not_device_connectivity():
+    coordinator = _coordinator({"serving": [{"serial_number": "serial-1", "online": False}]})
+    coordinator.realtime.connected = True
+    assert not coordinator.is_device_online("serial-1")
+    assert coordinator.get_online_since("serial-1") is None
+
+
+@pytest.mark.parametrize("class_name", ["CraftNextActionDateTimeSensor", "KegNextActionDateTimeSensor"])
+def test_next_action_does_not_pin_overdue_or_cross_session_deadlines(class_name):
+    first = datetime(2026, 1, 1, 10, 1, 12, tzinfo=timezone.utc)
+    second = first + timedelta(hours=1)
+    device = {"serial_number": "serial-1", "online": True, "active_session": 42, "process_estimate_remaining": first}
+    coordinator = _coordinator({"fermenting": [device]})
+    coordinator._session_created_by_id = {42: first, 43: second}
+    entity = _entity(class_name, coordinator, "serial-1", "fermenting")
+    assert entity.native_value == first.replace(second=0)
+    device.update(active_session=43, process_estimate_remaining=second)
+    assert entity.native_value == second.replace(second=0)
+    device.update(active_session=None, process_estimate_remaining=None)
+    assert entity.native_value is None
+    coordinator.data = SimpleNamespace()
+    assert entity.native_value is None
+
+
+@pytest.mark.parametrize("class_name", ["CraftNextActionDateTimeSensor", "KegNextActionDateTimeSensor"])
+def test_idle_deadline_is_cleared_but_legitimate_sessionless_action_is_kept(class_name):
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    device = {"serial_number": "serial-1", "online": True, "active_session": None, "user_action": 0, "process_estimate_remaining": when}
+    coordinator = _coordinator({"brew_clean_idle": [device]})
+    entity = _entity(class_name, coordinator, "serial-1", "brew_clean_idle")
+    assert entity.native_value is None
+    device["user_action"] = 5
+    assert entity.native_value == when
+
+
+@pytest.mark.parametrize("session_id", [None, 43])
+def test_old_session_mqtt_cannot_restore_action_after_reset_or_new_session(session_id):
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    device = {"serial_number": "serial-1", "online": True, "active_session": session_id, "user_action": 0, "process_estimate_remaining": None}
+    coordinator = _coordinator(
+        {"serving": [device]},
+        telemetry={"serial-1": SimpleNamespace(session_id=42, user_action=5, next_action_at=when, current_temperature=19)},
+    )
+    coordinator._session_created_by_id[43] = when
+    merged = coordinator.get_merged_device("serial-1", "serving")
+    assert merged["user_action"] == 0
+    assert merged["process_estimate_remaining"] is None
+    assert merged.get("active_session") == session_id
+    assert merged["current_temp"] == 19
+
+
+def test_fresh_mqtt_does_not_make_stale_rest_readings_current():
+    device = {"serial_number": "serial-1", "online": False, "current_temp": 20, "user_action": 5}
+    coordinator = _coordinator(
+        {"serving": [device]}, telemetry={"serial-1": SimpleNamespace(target_temperature=18)}
+    )
+    merged = coordinator.get_merged_device("serial-1", "serving")
+    assert merged.get("current_temp") is None
+    assert merged.get("user_action") is None
+    assert merged["target_temp"] == 18
+    coordinator.last_update_success = False
+    merged = coordinator.get_merged_device("serial-1", "serving")
+    assert merged.get("current_temp") is None
+    assert merged["target_temp"] == 18
+
+
+@pytest.mark.parametrize("class_name", ["CraftPeltierFanPowerSensor", "KegPeltierFanPowerSensor", "CraftEspCoreTempSensor", "KegEspCoreTempSensor", "CraftButtonSensor", "KegButtonSensor"])
+def test_valid_zero_measurements_are_not_hidden(class_name):
+    telemetry = SimpleNamespace(measurements={kind: 0.0 for kind in SensorType})
+    coordinator = _coordinator({}, telemetry={"serial-1": telemetry})
+    entity = _entity(class_name, coordinator, "serial-1", "serving")
+    assert entity.available
+    assert entity.native_value == ("Off" if "Button" in class_name else 0)
+
+
+@pytest.mark.parametrize("class_name", ["CraftTempControlPowerSensor", "KegTempControlPowerSensor", "CraftPeltierModeSensor", "KegPeltierModeSensor"])
+def test_zero_peltier_power_is_valid_idle_state(class_name):
+    coordinator = _coordinator({}, telemetry={"serial-1": SimpleNamespace(temp_control_power=0)})
+    entity = _entity(class_name, coordinator, "serial-1", "serving")
+    assert entity.available
+    assert entity.native_value == ("Idle" if "Mode" in class_name else 0)
+
+
+@pytest.mark.parametrize("class_name", ["CraftUserActionRequiredSensor", "KegActionRequiredSensor"])
+def test_action_clear_reaches_entity_state(class_name):
+    device = {"serial_number": "serial-1", "online": True, "user_action": 5}
+    coordinator = _coordinator(
+        {"serving": [device]}, telemetry={"serial-1": SimpleNamespace(user_action=0)}
+    )
+    entity = _entity(class_name, coordinator, "serial-1", "serving")
+    assert entity.available
+    assert entity.native_value == "No action required"
+    coordinator.realtime.get_telemetry = lambda serial: None
+    device["user_action"] = None
+    assert entity.native_value is None
+    assert entity.icon == "mdi:help-circle-outline"
+
+
+def test_expiry_updates_device_availability_and_online_period_without_rest_poll():
+    device = {"serial_number": "serial-1", "online": None}
+    coordinator = _coordinator({"serving": [device]})
+    loop = SimpleNamespace(
+        call_soon_threadsafe=lambda callback: callback(),
+        call_later=Mock(return_value=Mock()),
+    )
+    manager = sensor.MiniBrewRealtimeManager(SimpleNamespace(loop=loop), coordinator, None)
+    manager._online_serials = {"serial-1"}
+    coordinator.realtime = manager
+    manager._connected = True
+    manager._handle_device_log(SimpleNamespace(device_uuid="serial-1", current_temperature=19))
+    entity = _entity("KegCurrentTemperatureSensor", coordinator, "serial-1", "serving")
+    other = _entity("KegCurrentTemperatureSensor", coordinator, "serial-2", "serving")
+    cloud = _entity("KegOnlineStatusSensor", coordinator, "serial-1", "serving")
+    start = coordinator.get_online_since("serial-1")
+    assert start is not None
+    assert entity.available
+    assert entity.native_value == 19
+    assert not other.available
+    assert cloud.available
+    assert cloud.native_value == "Online"
+    manager._last_received["serial-1"] -= timedelta(seconds=60)
+    manager._async_expire_telemetry("serial-1")
+    assert "serial-1" not in coordinator._online_since
+    assert not entity.available
+    assert cloud.available
+    assert cloud.native_value is None
+    manager._handle_device_log(SimpleNamespace(device_uuid="serial-1", current_temperature=19))
+    assert entity.available
+    assert coordinator.get_online_since("serial-1") > start
+
+
+def test_failed_rest_cannot_suppress_live_deadline_using_an_old_idle_stage():
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    coordinator = _coordinator(
+        {"brew_clean_idle": [{"serial_number": "serial-1", "online": False}]},
+        telemetry={"serial-1": SimpleNamespace(next_action_at=when, user_action=0)},
+    )
+    coordinator.last_update_success = False
+    entity = _entity("CraftNextActionDateTimeSensor", coordinator, "serial-1", "brew_clean_idle")
+    assert entity.available
+    assert entity.native_value == when
+
+
+@pytest.mark.parametrize("connected", [False, True])
+def test_mqtt_diagnostic_stays_available_when_cloud_fails(connected):
+    path = _ROOT / "binary_sensor.py"
+    tree = ast.parse(path.read_text(), filename=str(path))
+    tree.body = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+    namespace = {
+        "BinarySensorEntity": object,
+        "BinarySensorDeviceClass": SimpleNamespace(CONNECTIVITY="connectivity"),
+        "EntityCategory": SimpleNamespace(DIAGNOSTIC="diagnostic"),
+    }
+    exec(compile(tree, str(path), "exec"), namespace)
+    cls = namespace["MiniBrewRealtimeConnectedSensor"]
+    entity = cls.__new__(cls)
+    entity._coordinator = SimpleNamespace(
+        last_update_success=False, realtime=SimpleNamespace(connected=connected)
+    )
+    assert entity.available
+    assert entity.is_on is connected
+
+
+@pytest.mark.parametrize("online", [True, False, None])
+@pytest.mark.parametrize("process_type", [None, 0, 1, 2, 3, 4, 5, 6, 99, "invalid"])
+def test_rest_refresh_controls_mqtt_gate(online, process_type):
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    overview = SimpleNamespace(serving=[{
+        "serial_number": "serial-1", "online": online,
+        "process_type": process_type, "active_session": 42,
+    }])
+    coordinator = _coordinator({})
+    coordinator.client = SimpleNamespace(
+        get_brewery_overview=Mock(return_value=overview),
+        get_devices=Mock(return_value=[]),
+    )
+    coordinator.realtime = SimpleNamespace(async_set_online_devices=AsyncMock())
+    coordinator._async_refresh_session_metadata = AsyncMock()
+
+    async def executor(func, *args):
+        return func(*args)
+
+    coordinator.hass.async_add_executor_job = executor
+    assert asyncio.run(coordinator._async_update_data()) is overview
+    coordinator.realtime.async_set_online_devices.assert_awaited_once_with(
+        {"serial-1"} if online is True and process_type in {1, 2, 3, 4, 5, 6} else set()
+    )
+
+
+def test_mqtt_gate_ignores_stale_session_and_stage_and_supports_sessionless_cleaning():
+    overview = SimpleNamespace(
+        fermenting=[{
+            "serial_number": "idle", "online": True,
+            "process_type": 0, "active_session": 42,
+        }],
+        brew_clean_idle=[{
+            "serial_number": "cleaning", "online": True,
+            "process_type": 2, "active_session": None,
+        }],
+        serving=[{
+            "serial_number": "offline", "online": False,
+            "process_type": 5, "active_session": 43,
+        }],
+    )
+    assert sensor._mqtt_serials(overview) == {"cleaning"}
+    assert sensor._mqtt_serials(None) == set()
+    overview.brew_clean_idle[0]["process_type"] = 0
+    assert sensor._mqtt_serials(overview) == set()
+
+
+@pytest.mark.parametrize("prefix", ["Craft", "Keg"])
+def test_portal_idle_response_cannot_restore_ended_session_from_caches(prefix):
+    device = {
+        "serial_number": "serial-1", "online": True, "stage": "Idle",
+        "process_type": 0, "session_id": None, "user_action": 0,
+        "target_temp": None, "current_temp": None, "beer_name": None,
+        "beer_style": None,
+    }
+    when = datetime(2026, 10, 17, tzinfo=timezone.utc)
+    coordinator = _coordinator(
+        {"brew_clean_idle": [device]},
+        telemetry={"serial-1": SimpleNamespace(
+            session_id=82991, process_phase=0, user_action=5,
+            next_action_at=when, target_temperature=18, current_temperature=19.9,
+        )},
+    )
+    coordinator._active_session_by_serial["serial-1"] = 82991
+    coordinator._session_created_by_serial["serial-1"] = when
+    coordinator._session_created_by_id[82991] = when
+    # The entity was originally created while fermenting.
+    for name in (f"{prefix}SessionIdSensor", f"{prefix}SessionStartedSensor"):
+        entity = _entity(name, coordinator, "serial-1", "fermenting")
+        assert entity.available
+        assert entity.native_value is None
+    merged = coordinator.get_merged_device("serial-1", "fermenting")
+    assert merged["user_action"] == 0
+    assert merged["target_temp"] is None
+    assert merged.get("process_estimate_remaining") is None
+    assert sensor._current_stage_group(coordinator, "serial-1") == "brew_clean_idle"
+    assert sensor._mqtt_serials(coordinator.data) == set()
+    coordinator.hass.async_create_task.assert_not_called()
+
+
+def test_session_lookup_finishing_after_reset_does_not_restore_device_cache():
+    import asyncio
+
+    async def scenario():
+        coordinator = _coordinator({})
+        coordinator._session_lookup_inflight = set()
+        coordinator._active_session_by_serial["serial-1"] = 82991
+        when = datetime(2026, 10, 17, tzinfo=timezone.utc)
+
+        async def fetch(session_id):
+            coordinator._active_session_by_serial["serial-1"] = None
+            coordinator._session_created_by_serial.pop("serial-1", None)
+            return when
+
+        coordinator._async_fetch_session_started = fetch
+        await coordinator._async_ensure_session_created("serial-1", 82991)
+        assert "serial-1" not in coordinator._session_created_by_serial
+        assert coordinator._session_lookup_inflight == set()
+        assert coordinator._session_created_by_id[82991] == when
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("error", [ConnectionError("network down"), PermissionError("401 unauthorized")])
+def test_failed_rest_refresh_pauses_mqtt_before_raising(error):
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    coordinator = _coordinator({})
+    coordinator.client = SimpleNamespace(get_brewery_overview=Mock(side_effect=error))
+    coordinator.realtime = SimpleNamespace(async_set_online_devices=AsyncMock())
+
+    async def executor(func, *args):
+        return func(*args)
+
+    coordinator.hass.async_add_executor_job = executor
+    with pytest.raises((RuntimeError, PermissionError)):
+        asyncio.run(coordinator._async_update_data())
+    coordinator.realtime.async_set_online_devices.assert_awaited_once_with(set())

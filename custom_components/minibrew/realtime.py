@@ -12,13 +12,16 @@ back onto the loop with ``hass.loop.call_soon_threadsafe``.
 import asyncio
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 _LOGGER = logging.getLogger(__name__)
 
 # Seconds to wait before attempting to reconnect after a disconnect or initial
 # connection failure.
 _RECONNECT_DELAY = 30
+
+# Device logs are requested again after five seconds of silence.
+_TELEMETRY_MAX_AGE = timedelta(seconds=60)
 
 # Maps ``DeviceLogMessage`` attribute -> the REST device-dict key the existing
 # sensors already read. Keeping it here (with no Home Assistant imports) lets the
@@ -72,7 +75,7 @@ def _telemetry_fingerprint(msg):
     return tuple(sorted(attrs.items()))
 
 
-def overlay_mqtt(device: dict, telemetry) -> None:
+def overlay_mqtt(device: dict, telemetry, *, include_session=True) -> None:
     """Overlay live MQTT telemetry onto a REST device dict, in place.
 
     Only non-``None`` telemetry values win, so a missing field never clobbers
@@ -81,14 +84,10 @@ def overlay_mqtt(device: dict, telemetry) -> None:
     if telemetry is None:
         return
     for attr, device_key in _TELEMETRY_TO_DEVICE_KEY.items():
+        if not include_session and attr not in {"current_temperature"}:
+            continue
         value = getattr(telemetry, attr, None)
         if value is not None:
-            if attr == "user_action":
-                existing = device.get(device_key)
-                # Some MQTT payloads report 0 when action context is absent.
-                # Preserve a non-zero REST action in that case.
-                if value == 0 and isinstance(existing, (int, float)) and existing > 0:
-                    continue
             device[device_key] = value
 
 
@@ -110,16 +109,38 @@ class MiniBrewRealtimeManager:
         self._telemetry = {}
         self._fingerprints = {}
         self._last_update = {}
+        self._last_received = {}
+        self._expiry_handles = {}
         self._telemetry_lock = threading.Lock()
         self._subscribed = set()
+        self._online_serials = set()
         self._connected = False
         self._reconnect_task = None
         self._stopped = False
 
-    async def async_start(self):
+    async def async_start(self, online_serials):
         """Create and connect the MQTT client (initial entry point from HA setup)."""
         self._stopped = False
+        self._online_serials = set(online_serials)
         await self._async_do_connect()
+
+    async def async_set_online_devices(self, online_serials):
+        """Reconcile devices REST confirms are online with an active process."""
+        self._online_serials = set(online_serials)
+        if not self._online_serials:
+            if not self._stopped:
+                _LOGGER.info("MiniBrew realtime: pausing MQTT until REST reports an online device with an active process")
+                await self.async_stop()
+            return
+        for serial in self._subscribed - self._online_serials:
+            if self._mqtt is not None:
+                await self.hass.async_add_executor_job(self._mqtt.unsubscribe_device_logs, serial)
+            self._subscribed.discard(serial)
+        self._stopped = False
+        retry_pending = self._reconnect_task is not None and not self._reconnect_task.done()
+        if self._mqtt is None and not retry_pending:
+            await self._async_do_connect()
+        self.async_ensure_subscribed(self._online_serials)
 
     def _dispose_mqtt_client(self, mqtt=None):
         """Disconnect an MQTT client and drop our reference to it.
@@ -139,6 +160,8 @@ class MiniBrewRealtimeManager:
 
     async def _async_do_connect(self):
         """Internal: create the MQTT client and connect. Called from async_start and reconnect."""
+        if self._stopped or not self._online_serials:
+            return
         if self._mqtt is not None:
             self._dispose_mqtt_client()
         try:
@@ -147,6 +170,10 @@ class MiniBrewRealtimeManager:
             _LOGGER.warning("MiniBrew realtime: could not create MQTT client: %s", err)
             self._mqtt = None
             self._schedule_reconnect()
+            return
+
+        if self._stopped or not self._online_serials:
+            await self.hass.async_add_executor_job(self._dispose_mqtt_client)
             return
 
         self._mqtt.on_device_log(self._handle_device_log)
@@ -173,7 +200,7 @@ class MiniBrewRealtimeManager:
         if self._mqtt is None:
             return
         for serial in serials:
-            if not serial or serial in self._subscribed:
+            if serial not in self._online_serials or serial in self._subscribed:
                 continue
             try:
                 self._mqtt.subscribe_device_logs(serial)
@@ -183,9 +210,58 @@ class MiniBrewRealtimeManager:
                 _LOGGER.warning("MiniBrew realtime: subscribe failed for %s: %s", serial, err)
 
     def get_telemetry(self, serial):
-        """Return the latest decoded telemetry for a serial, or ``None``."""
+        """Return telemetry only while connected and receiving device logs."""
+        if serial not in self._online_serials:
+            return None
         with self._telemetry_lock:
+            received = self._last_received.get(serial)
+            if not self._connected or received is None:
+                return None
+            if datetime.now(timezone.utc) - received >= _TELEMETRY_MAX_AGE:
+                return None
             return self._telemetry.get(serial)
+
+    def _async_schedule_expiry(self, serial):
+        """Ensure silence triggers a state update even without a REST poll."""
+        handle = self._expiry_handles.pop(serial, None)
+        if handle is not None:
+            handle.cancel()
+        if self._stopped:
+            return
+        self._expiry_handles[serial] = self.hass.loop.call_later(
+            _TELEMETRY_MAX_AGE.total_seconds(), self._async_expire_telemetry, serial
+        )
+
+    def _async_expire_telemetry(self, serial):
+        self._expiry_handles.pop(serial, None)
+        with self._telemetry_lock:
+            received = self._last_received.get(serial)
+            if received is not None:
+                remaining = (
+                    _TELEMETRY_MAX_AGE - (datetime.now(timezone.utc) - received)
+                ).total_seconds()
+                if remaining > 0:
+                    self._expiry_handles[serial] = self.hass.loop.call_later(
+                        remaining, self._async_expire_telemetry, serial
+                    )
+                    return
+            self._telemetry.pop(serial, None)
+            self._fingerprints.pop(serial, None)
+            self._last_received.pop(serial, None)
+        self.coordinator.async_update_listeners()
+
+    def _clear_telemetry(self):
+        with self._telemetry_lock:
+            self._telemetry.clear()
+            self._fingerprints.clear()
+            self._last_received.clear()
+
+        def cancel_expiry():
+            for handle in self._expiry_handles.values():
+                handle.cancel()
+            self._expiry_handles.clear()
+
+        self.hass.loop.call_soon_threadsafe(cancel_expiry)
 
     def get_last_update(self, serial):
         """Return timestamp of last meaningful telemetry update for a serial."""
@@ -200,6 +276,7 @@ class MiniBrewRealtimeManager:
     async def async_stop(self):
         """Disconnect the MQTT client and stop its network thread."""
         self._stopped = True
+        self._clear_telemetry()
         if self._reconnect_task is not None:
             self._reconnect_task.cancel()
             self._reconnect_task = None
@@ -211,14 +288,15 @@ class MiniBrewRealtimeManager:
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("MiniBrew realtime: error during disconnect: %s", err)
         self._connected = False
+        self._subscribed.clear()
 
     def _schedule_reconnect(self):
         """Schedule a reconnect attempt on the HA event loop (safe to call from any thread)."""
-        if self._stopped:
+        if self._stopped or not self._online_serials:
             return
 
         def _do_schedule():
-            if self._stopped:
+            if self._stopped or not self._online_serials:
                 return
             if self._reconnect_task is not None and not self._reconnect_task.done():
                 return
@@ -232,7 +310,7 @@ class MiniBrewRealtimeManager:
     async def _async_reconnect(self):
         """Wait, then attempt to reconnect the MQTT stream."""
         await asyncio.sleep(_RECONNECT_DELAY)
-        if self._stopped:
+        if self._stopped or not self._online_serials:
             return
         _LOGGER.warning("MiniBrew realtime: attempting to reconnect…")
         # Reset subscribed set — _handle_connected will re-subscribe once the connection is up.
@@ -246,16 +324,30 @@ class MiniBrewRealtimeManager:
     def _handle_device_log(self, msg):
         """Store telemetry and notify listeners only on meaningful changes."""
         serial = msg.device_uuid
-        if not serial:
+        if self._stopped or serial not in self._online_serials:
+            return
+        if getattr(msg, "decode_error", None):
+            _LOGGER.warning("MiniBrew realtime: invalid telemetry from %s: %s", serial, msg.decode_error)
             return
 
         fingerprint = _telemetry_fingerprint(msg)
         with self._telemetry_lock:
-            if self._fingerprints.get(serial) == fingerprint:
-                return
+            now = datetime.now(timezone.utc)
+            previous_received = self._last_received.get(serial)
+            changed = (
+                self._fingerprints.get(serial) != fingerprint
+                or previous_received is None
+                or now - previous_received >= _TELEMETRY_MAX_AGE
+            )
             self._telemetry[serial] = msg
             self._fingerprints[serial] = fingerprint
-            self._last_update[serial] = getattr(msg, "received_at", None)
+            self._last_received[serial] = now
+            if changed:
+                self._last_update[serial] = getattr(msg, "received_at", None)
+
+        self.hass.loop.call_soon_threadsafe(lambda: self._async_schedule_expiry(serial))
+        if not changed:
+            return
 
         _LOGGER.debug(
             "MiniBrew realtime: message from %s (session=%s phase=%s target=%s current=%s action=%s)",
@@ -270,20 +362,24 @@ class MiniBrewRealtimeManager:
 
     def _handle_connected(self):
         """Mark connected, subscribe to all known serials, and refresh entity availability (paho thread)."""
+        if self._stopped or not self._online_serials:
+            return
         self._connected = True
         _LOGGER.info("MiniBrew realtime: MQTT connected")
         # Subscribe here — this is the earliest safe point after the WS handshake completes.
         # Both initial connection and reconnects land here, so subscriptions are always set up.
         def _subscribe_and_notify():
-            from .sensor import _collect_serials  # local import to avoid circular dep
-            if self.coordinator.data is not None:
-                self.async_ensure_subscribed(_collect_serials(self.coordinator))
+            self.async_ensure_subscribed(self._online_serials)
             self.coordinator.async_update_listeners()
         self.hass.loop.call_soon_threadsafe(_subscribe_and_notify)
 
     def _handle_disconnected(self):
         """Mark disconnected, refresh entity availability, and schedule reconnect (paho thread)."""
         self._connected = False
+        self._clear_telemetry()
+        if self._stopped or not self._online_serials:
+            self.hass.loop.call_soon_threadsafe(self.coordinator.async_update_listeners)
+            return
         _LOGGER.warning("MiniBrew realtime: MQTT disconnected — will retry in %s s", _RECONNECT_DELAY)
         self._dispose_mqtt_client()
         self.hass.loop.call_soon_threadsafe(self.coordinator.async_update_listeners)

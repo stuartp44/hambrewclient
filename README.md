@@ -19,7 +19,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 - **Current Stage** - Active stage information
 - **Process Phase** - Current phase details from runtime telemetry
 - **Online Status** - Device connectivity status
-- **Online Since** - Timestamp of the last known online heartbeat (diagnostic)
+- **Online Since** - Start of the current observed online period; unavailable while offline (diagnostic)
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **User Action Required** - Notifications for required user actions
@@ -34,7 +34,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 - **Beer Name** - Currently loaded beer name (shows `Custom Fermentation` in custom fermentation mode, including inferred fermenting/primary sessions with unknown beer metadata)
 - **Beer Style** - Currently loaded beer style (`N/A` in custom fermentation mode)
 - **Online Status** - Device connectivity status
-- **Online Since** - Timestamp of the last known online heartbeat (diagnostic)
+- **Online Since** - Start of the current observed online period; unavailable while offline (diagnostic)
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **Action Required** - Notifications for required user actions
@@ -82,13 +82,26 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 After adding the integration, you can configure additional options:
 
 - **Real-time discovery interval**: How often to refresh discovery and fallback data from REST while MQTT drives live telemetry (default: 300 seconds)
-- Some MQTT-backed sensors only appear once the device publishes the relevant telemetry. If the device is connected but a value is still unavailable, Home Assistant may show `Unknown` until that field arrives.
+- MQTT-backed sensors report `Unavailable` until fresh telemetry arrives from that device. If telemetry is arriving but an individual field is missing, that sensor reports `Unknown`.
 - The integration requests frequent device logs automatically and re-requests them after five seconds without incoming telemetry. Opening the MiniBrew portal or iOS app should not be necessary to start the stream; offline devices still cannot provide live data.
 
 To access options:
 1. Go to **Settings** → **Devices & Services**
 2. Find the MiniBrew integration
 3. Click **Configure**
+
+### Sensor availability and connectivity
+
+- Device information displays the MiniBrew firmware version without its ESP-IDF build suffix (for example, `3.2.3` instead of `3.2.3, idf-v4.2-50-g11005797d`). The original API value is unchanged.
+- **Unavailable** means the sensor's required data source cannot currently provide data. Current temperatures, target temperatures, and action reminders require a positive cloud online status or fresh device telemetry. Firmware update and cleaning status require an online device in a successful cloud response.
+- **Unknown** means the required source is reachable but the individual value is absent. Missing action data is not treated as "No action required", and valid zero measurements are not hidden.
+- Beer metadata, current stage, and session metadata remain available while a device is offline if a successful cloud response still supplies that device. Missing metadata, such as a session ID when no session is active, reports `Unknown`.
+- **Cloud Connection** reports `Offline` when REST explicitly reports the device offline; MQTT cannot override that status. A missing cloud status reports `Unknown` unless fresh permitted telemetry establishes connectivity. A failed cloud refresh makes it `Unavailable`. The **MQTT** diagnostic reports the broker connection separately: a connected broker alone does not prove a Craft or Keg is online.
+- REST controls MQTT startup and retries. A device must be explicitly online **and** report a known non-idle `process_type`: brewing, fermentation, serving, or cleaning (including acid cleaning). Online-but-idle devices, missing/unknown process types, and a session ID alone do not enable MQTT. A failed REST overview refresh pauses MQTT too. When no eligible devices remain, the connection is stopped and retries are cancelled. A successful REST refresh reporting an eligible device resumes MQTT; only eligible devices are subscribed. With multiple devices, the shared broker connection can remain active for an eligible device while another device is idle/offline. Process starts and stops are discovered on the configured REST discovery interval (default: 300 seconds). Cloud Connection and Online Since still reflect device connectivity, even while MQTT is intentionally paused for an idle device.
+- MQTT-only readings (process phase, Peltier power/mode, fan duty, controller temperature, and button) require device-specific telemetry received within the last **60 seconds** and an active MQTT connection. Cached telemetry is discarded on disconnection and expires after 60 seconds of silence, independently of REST polling.
+- **Online Since** stays fixed throughout the current observed online period, becomes `Unavailable` when connectivity is lost, and restarts on reconnection. If Home Assistant starts while a device is already online, this is the time it first observed the device online, not the device's actual connection time. The entity's unique ID is unchanged.
+- **Next Action** follows the current reported deadline, rounded to the minute, including overdue deadlines. It does not pin old timestamps across session changes. Explicit MQTT action `0` clears a previous action, missing action fields do not overwrite valid cloud data, and telemetry carrying a different session ID cannot restore an old session's reminders. Cleaning/setup actions without a brew session remain supported.
+- An explicit REST session value, including `session_id: null`, takes precedence over cached session metadata. A session lookup completing after a reset cannot restore the ended session's per-device start time. Process phase `None` alone is not treated as proof of session completion; the portal's idle response explicitly reports `process_type: 0`, `stage: "Idle"`, and `session_id: null`.
 
 ## Requirements
 
