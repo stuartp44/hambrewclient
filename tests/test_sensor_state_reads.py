@@ -7,6 +7,7 @@ environment needs no Home Assistant or cloud client dependencies.
 import ast
 import dataclasses
 import importlib.util
+import logging
 from datetime import datetime, timedelta, timezone
 from enum import IntEnum
 from pathlib import Path
@@ -64,6 +65,8 @@ def _load_sensor_reads():
         "_process_phase_display",
         "_is_custom_fermentation_mode",
         "_collect_serials",
+        "_online_serials",
+        "_is_auth_error",
         "_merge_last_time_online_from_devices",
         "_coerce_timestamp",
         "_next_action_state",
@@ -114,6 +117,9 @@ def _load_sensor_reads():
         "overlay_mqtt": realtime.overlay_mqtt,
         "MiniBrewRealtimeManager": realtime.MiniBrewRealtimeManager,
         "DOMAIN": "minibrew",
+        "_LOGGER": logging.getLogger(__name__),
+        "UpdateFailed": RuntimeError,
+        "ConfigEntryAuthFailed": PermissionError,
     }
     exec(compile(tree, str(path), "exec"), namespace)
     return SimpleNamespace(**namespace)
@@ -373,7 +379,9 @@ def test_every_sensor_uses_its_required_source(class_name, rest_ok, online, mqtt
     elif class_name in _MQTT_SENSORS:
         expected = mqtt_ok
     else:
-        expected = mqtt_ok or (rest_ok and online is True)
+        expected = not (rest_ok and online is False) and (
+            mqtt_ok or (rest_ok and online is True)
+        )
     assert entity.available is expected
 
 
@@ -542,13 +550,14 @@ def test_action_clear_reaches_entity_state(class_name):
 
 
 def test_expiry_updates_device_availability_and_online_period_without_rest_poll():
-    device = {"serial_number": "serial-1", "online": False}
+    device = {"serial_number": "serial-1", "online": None}
     coordinator = _coordinator({"serving": [device]})
     loop = SimpleNamespace(
         call_soon_threadsafe=lambda callback: callback(),
         call_later=Mock(return_value=Mock()),
     )
     manager = sensor.MiniBrewRealtimeManager(SimpleNamespace(loop=loop), coordinator, None)
+    manager._online_serials = {"serial-1"}
     coordinator.realtime = manager
     manager._connected = True
     manager._handle_device_log(SimpleNamespace(device_uuid="serial-1", current_temperature=19))
@@ -567,7 +576,7 @@ def test_expiry_updates_device_availability_and_online_period_without_rest_poll(
     assert "serial-1" not in coordinator._online_since
     assert not entity.available
     assert cloud.available
-    assert cloud.native_value == "Offline"
+    assert cloud.native_value is None
     manager._handle_device_log(SimpleNamespace(device_uuid="serial-1", current_temperature=19))
     assert entity.available
     assert coordinator.get_online_since("serial-1") > start
@@ -603,3 +612,45 @@ def test_mqtt_diagnostic_stays_available_when_cloud_fails(connected):
     )
     assert entity.available
     assert entity.is_on is connected
+
+
+@pytest.mark.parametrize("online", [True, False, None])
+def test_rest_refresh_controls_mqtt_gate(online):
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    overview = SimpleNamespace(serving=[{"serial_number": "serial-1", "online": online}])
+    coordinator = _coordinator({})
+    coordinator.client = SimpleNamespace(
+        get_brewery_overview=Mock(return_value=overview),
+        get_devices=Mock(return_value=[]),
+    )
+    coordinator.realtime = SimpleNamespace(async_set_online_devices=AsyncMock())
+    coordinator._async_refresh_session_metadata = AsyncMock()
+
+    async def executor(func, *args):
+        return func(*args)
+
+    coordinator.hass.async_add_executor_job = executor
+    assert asyncio.run(coordinator._async_update_data()) is overview
+    coordinator.realtime.async_set_online_devices.assert_awaited_once_with(
+        {"serial-1"} if online is True else set()
+    )
+
+
+@pytest.mark.parametrize("error", [ConnectionError("network down"), PermissionError("401 unauthorized")])
+def test_failed_rest_refresh_pauses_mqtt_before_raising(error):
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    coordinator = _coordinator({})
+    coordinator.client = SimpleNamespace(get_brewery_overview=Mock(side_effect=error))
+    coordinator.realtime = SimpleNamespace(async_set_online_devices=AsyncMock())
+
+    async def executor(func, *args):
+        return func(*args)
+
+    coordinator.hass.async_add_executor_job = executor
+    with pytest.raises((RuntimeError, PermissionError)):
+        asyncio.run(coordinator._async_update_data())
+    coordinator.realtime.async_set_online_devices.assert_awaited_once_with(set())

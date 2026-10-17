@@ -113,14 +113,34 @@ class MiniBrewRealtimeManager:
         self._expiry_handles = {}
         self._telemetry_lock = threading.Lock()
         self._subscribed = set()
+        self._online_serials = set()
         self._connected = False
         self._reconnect_task = None
         self._stopped = False
 
-    async def async_start(self):
+    async def async_start(self, online_serials):
         """Create and connect the MQTT client (initial entry point from HA setup)."""
         self._stopped = False
+        self._online_serials = set(online_serials)
         await self._async_do_connect()
+
+    async def async_set_online_devices(self, online_serials):
+        """Let successful REST discovery control MQTT connections and retries."""
+        self._online_serials = set(online_serials)
+        if not self._online_serials:
+            if not self._stopped:
+                _LOGGER.info("MiniBrew realtime: pausing MQTT until REST reports an online device")
+                await self.async_stop()
+            return
+        for serial in self._subscribed - self._online_serials:
+            if self._mqtt is not None:
+                await self.hass.async_add_executor_job(self._mqtt.unsubscribe_device_logs, serial)
+            self._subscribed.discard(serial)
+        self._stopped = False
+        retry_pending = self._reconnect_task is not None and not self._reconnect_task.done()
+        if self._mqtt is None and not retry_pending:
+            await self._async_do_connect()
+        self.async_ensure_subscribed(self._online_serials)
 
     def _dispose_mqtt_client(self, mqtt=None):
         """Disconnect an MQTT client and drop our reference to it.
@@ -140,6 +160,8 @@ class MiniBrewRealtimeManager:
 
     async def _async_do_connect(self):
         """Internal: create the MQTT client and connect. Called from async_start and reconnect."""
+        if self._stopped or not self._online_serials:
+            return
         if self._mqtt is not None:
             self._dispose_mqtt_client()
         try:
@@ -148,6 +170,10 @@ class MiniBrewRealtimeManager:
             _LOGGER.warning("MiniBrew realtime: could not create MQTT client: %s", err)
             self._mqtt = None
             self._schedule_reconnect()
+            return
+
+        if self._stopped or not self._online_serials:
+            await self.hass.async_add_executor_job(self._dispose_mqtt_client)
             return
 
         self._mqtt.on_device_log(self._handle_device_log)
@@ -174,7 +200,7 @@ class MiniBrewRealtimeManager:
         if self._mqtt is None:
             return
         for serial in serials:
-            if not serial or serial in self._subscribed:
+            if serial not in self._online_serials or serial in self._subscribed:
                 continue
             try:
                 self._mqtt.subscribe_device_logs(serial)
@@ -185,6 +211,8 @@ class MiniBrewRealtimeManager:
 
     def get_telemetry(self, serial):
         """Return telemetry only while connected and receiving device logs."""
+        if serial not in self._online_serials:
+            return None
         with self._telemetry_lock:
             received = self._last_received.get(serial)
             if not self._connected or received is None:
@@ -260,14 +288,15 @@ class MiniBrewRealtimeManager:
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("MiniBrew realtime: error during disconnect: %s", err)
         self._connected = False
+        self._subscribed.clear()
 
     def _schedule_reconnect(self):
         """Schedule a reconnect attempt on the HA event loop (safe to call from any thread)."""
-        if self._stopped:
+        if self._stopped or not self._online_serials:
             return
 
         def _do_schedule():
-            if self._stopped:
+            if self._stopped or not self._online_serials:
                 return
             if self._reconnect_task is not None and not self._reconnect_task.done():
                 return
@@ -281,7 +310,7 @@ class MiniBrewRealtimeManager:
     async def _async_reconnect(self):
         """Wait, then attempt to reconnect the MQTT stream."""
         await asyncio.sleep(_RECONNECT_DELAY)
-        if self._stopped:
+        if self._stopped or not self._online_serials:
             return
         _LOGGER.warning("MiniBrew realtime: attempting to reconnect…")
         # Reset subscribed set — _handle_connected will re-subscribe once the connection is up.
@@ -295,7 +324,7 @@ class MiniBrewRealtimeManager:
     def _handle_device_log(self, msg):
         """Store telemetry and notify listeners only on meaningful changes."""
         serial = msg.device_uuid
-        if not serial or self._stopped:
+        if self._stopped or serial not in self._online_serials:
             return
         if getattr(msg, "decode_error", None):
             _LOGGER.warning("MiniBrew realtime: invalid telemetry from %s: %s", serial, msg.decode_error)
@@ -333,14 +362,14 @@ class MiniBrewRealtimeManager:
 
     def _handle_connected(self):
         """Mark connected, subscribe to all known serials, and refresh entity availability (paho thread)."""
+        if self._stopped or not self._online_serials:
+            return
         self._connected = True
         _LOGGER.info("MiniBrew realtime: MQTT connected")
         # Subscribe here — this is the earliest safe point after the WS handshake completes.
         # Both initial connection and reconnects land here, so subscriptions are always set up.
         def _subscribe_and_notify():
-            from .sensor import _collect_serials  # local import to avoid circular dep
-            if self.coordinator.data is not None:
-                self.async_ensure_subscribed(_collect_serials(self.coordinator))
+            self.async_ensure_subscribed(self._online_serials)
             self.coordinator.async_update_listeners()
         self.hass.loop.call_soon_threadsafe(_subscribe_and_notify)
 
@@ -348,6 +377,9 @@ class MiniBrewRealtimeManager:
         """Mark disconnected, refresh entity availability, and schedule reconnect (paho thread)."""
         self._connected = False
         self._clear_telemetry()
+        if self._stopped or not self._online_serials:
+            self.hass.loop.call_soon_threadsafe(self.coordinator.async_update_listeners)
+            return
         _LOGGER.warning("MiniBrew realtime: MQTT disconnected — will retry in %s s", _RECONNECT_DELAY)
         self._dispose_mqtt_client()
         self.hass.loop.call_soon_threadsafe(self.coordinator.async_update_listeners)

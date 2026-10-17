@@ -220,10 +220,12 @@ def _sensor_available(entity):
 
 
 def _cloud_connection_state(coordinator, serial):
-    if coordinator.get_telemetry(serial) is not None:
-        return "Online"
     device = coordinator.get_rest_device(serial)
     online = device.get("online") if device and coordinator.last_update_success else None
+    if online is False:
+        return "Offline"
+    if coordinator.get_telemetry(serial) is not None:
+        return "Online"
     if not isinstance(online, bool):
         return None
     return "Online" if online else "Offline"
@@ -249,6 +251,18 @@ def _collect_serials(coordinator, data=None):
             if serial:
                 serials.add(serial)
     return serials
+
+
+def _online_serials(data):
+    """Return only devices explicitly reported online by REST."""
+    if data is None:
+        return set()
+    return {
+        _device_serial(device)
+        for devices in data.__dict__.values()
+        for device in devices
+        if _device_to_dict(device).get("online") is True and _device_serial(device)
+    }
 
 
 def _is_auth_error(err: Exception) -> bool:
@@ -555,9 +569,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     # Start the optional real-time MQTT stream and subscribe to known devices.
     if coordinator.realtime_enabled:
         manager = MiniBrewRealtimeManager(hass, coordinator, client)
-        await manager.async_start()
         coordinator.realtime = manager
-        manager.async_ensure_subscribed(_collect_serials(coordinator))
+        await manager.async_start(_online_serials(coordinator.data))
 
     _LOGGER.debug("MiniBrew sensor setup complete: devices=%s realtime_enabled=%s", len(_collect_serials(coordinator)), coordinator.realtime_enabled)
     
@@ -684,6 +697,8 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Fetching data from MiniBrew API...")
             data = await self.hass.async_add_executor_job(self.client.get_brewery_overview)
         except Exception as err:
+            if self.realtime is not None:
+                await self.realtime.async_set_online_devices(set())
             if _is_auth_error(err):
                 raise ConfigEntryAuthFailed("MiniBrew credentials are invalid") from err
             _LOGGER.error("Error fetching brewery overview: %s", err)
@@ -705,9 +720,9 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
 
         _LOGGER.debug("Fetched MiniBrew overview: groups=%s active_sessions=%s", {k: len(v) for k, v in data.__dict__.items()}, sum(1 for session_id in self._active_session_by_serial.values() if session_id is not None))
 
-        # Subscribe the MQTT stream to any newly discovered devices.
+        # REST connectivity is authoritative for opening the MQTT stream.
         if self.realtime is not None:
-            self.realtime.async_ensure_subscribed(_collect_serials(self, data))
+            await self.realtime.async_set_online_devices(_online_serials(data))
 
         return data
 

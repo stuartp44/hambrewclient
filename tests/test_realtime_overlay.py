@@ -124,6 +124,7 @@ def test_realtime_manager_skips_duplicate_packets():
     coordinator = SimpleNamespace(async_update_listeners=lambda: None)
     hass = SimpleNamespace(loop=_Loop())
     manager = realtime.MiniBrewRealtimeManager(hass, coordinator, client=None)
+    manager._online_serials = {"serial-1"}
 
     msg = SimpleNamespace(
         device_uuid="serial-1",
@@ -159,6 +160,7 @@ def test_realtime_manager_ignores_countdown_only_changes():
     coordinator = SimpleNamespace(async_update_listeners=lambda: None)
     hass = SimpleNamespace(loop=_Loop())
     manager = realtime.MiniBrewRealtimeManager(hass, coordinator, client=None)
+    manager._online_serials = {"serial-1"}
 
     common = {
         "device_uuid": "serial-1",
@@ -239,6 +241,7 @@ def test_realtime_manager_disconnects_stale_client_before_reconnect():
     coordinator = _FakeCoordinator()
     client = SimpleNamespace(create_mqtt_client=lambda: new_client)
     manager = realtime.MiniBrewRealtimeManager(hass, coordinator, client)
+    manager._online_serials = {"serial-1"}
     manager._mqtt = existing
 
     asyncio.run(manager._async_do_connect())
@@ -259,6 +262,7 @@ def _manager_with_device():
     manager = realtime.MiniBrewRealtimeManager(
         SimpleNamespace(loop=loop), coordinator, client=None
     )
+    manager._online_serials = {"serial-1"}
     manager._connected = True
     manager._handle_device_log(_telemetry(device_uuid="serial-1", user_action=5))
     return manager, coordinator
@@ -339,6 +343,109 @@ def test_identical_packet_after_silence_notifies_recovery():
     manager._handle_device_log(_telemetry(device_uuid="serial-1", user_action=5))
     assert manager.get_telemetry("serial-1") is not None
     assert coordinator.async_update_listeners.call_count == calls + 1
+
+
+def test_rest_offline_prevents_startup_and_rest_online_resumes_connection():
+    import asyncio
+    from unittest.mock import Mock
+
+    async def scenario():
+        mqtt = Mock()
+        client = SimpleNamespace(create_mqtt_client=Mock(return_value=mqtt))
+
+        async def executor(func, *args):
+            return func(*args)
+
+        hass = SimpleNamespace(
+            loop=asyncio.get_running_loop(),
+            async_add_executor_job=executor,
+            async_create_task=asyncio.create_task,
+        )
+        coordinator = SimpleNamespace(async_update_listeners=Mock())
+        manager = realtime.MiniBrewRealtimeManager(hass, coordinator, client)
+        await manager.async_start(set())
+        client.create_mqtt_client.assert_not_called()
+        manager._schedule_reconnect()
+        await asyncio.sleep(0)
+        assert manager._reconnect_task is None
+
+        await manager.async_set_online_devices({"online-device"})
+        client.create_mqtt_client.assert_called_once()
+        mqtt.connect.assert_called_once()
+        mqtt.subscribe_device_logs.assert_called_once_with("online-device")
+        manager.async_ensure_subscribed({"offline-device"})
+        mqtt.subscribe_device_logs.assert_called_once()
+
+        manager._connected = True
+        manager._handle_device_log(_telemetry(device_uuid="online-device", user_action=5))
+        await asyncio.sleep(0)
+        assert manager.get_telemetry("online-device") is not None
+        await manager.async_set_online_devices(set())
+        await asyncio.sleep(0)
+        mqtt.disconnect.assert_called_once()
+        assert manager._mqtt is None
+        assert not manager.connected
+        assert manager.get_telemetry("online-device") is None
+        assert manager._subscribed == set()
+        manager._handle_connected()
+        assert not manager.connected
+        await manager._async_do_connect()
+        client.create_mqtt_client.assert_called_once()
+
+        await manager.async_set_online_devices({"online-device"})
+        assert client.create_mqtt_client.call_count == 2
+        assert mqtt.connect.call_count == 2
+        await manager.async_stop()
+        await asyncio.sleep(0)
+
+    asyncio.run(scenario())
+
+
+def test_rest_offline_cancels_pending_retry():
+    import asyncio
+    from unittest.mock import Mock
+
+    async def scenario():
+        hass = SimpleNamespace(loop=asyncio.get_running_loop(), async_create_task=asyncio.create_task)
+        manager = realtime.MiniBrewRealtimeManager(
+            hass, SimpleNamespace(async_update_listeners=Mock()), Mock()
+        )
+        manager._online_serials = {"serial-1"}
+        manager._schedule_reconnect()
+        await asyncio.sleep(0)
+        retry = manager._reconnect_task
+        assert retry is not None
+        await manager.async_set_online_devices(set())
+        await asyncio.sleep(0)
+        assert retry.cancelled()
+        assert manager._reconnect_task is None
+        manager._client.create_mqtt_client.assert_not_called()
+
+    asyncio.run(scenario())
+
+
+def test_offline_device_is_unsubscribed_while_another_device_stays_online():
+    import asyncio
+    from unittest.mock import Mock
+
+    async def scenario():
+        async def executor(func, *args):
+            return func(*args)
+
+        mqtt = Mock()
+        manager = realtime.MiniBrewRealtimeManager(
+            SimpleNamespace(async_add_executor_job=executor),
+            SimpleNamespace(), None,
+        )
+        manager._mqtt = mqtt
+        manager._subscribed = {"online", "offline"}
+        await manager.async_set_online_devices({"online"})
+        mqtt.unsubscribe_device_logs.assert_called_once_with("offline")
+        mqtt.disconnect.assert_not_called()
+        assert manager._subscribed == {"online"}
+        assert manager.get_telemetry("offline") is None
+
+    asyncio.run(scenario())
 
 if __name__ == "__main__":
     failures = 0
