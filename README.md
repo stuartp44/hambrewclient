@@ -13,31 +13,33 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 ## Features
 
 ### Craft Device Sensors
-- **Current Temperature** - Real-time temperature monitoring
-- **Target Temperature** - Configured target temperature
+- **Current Temperature** - MQTT temperature with REST fallback; attributes identify `temperature_source` (`mqtt`/`rest`) and `rest_last_successful_poll`
+- **Target Temperature** - Configured target temperature; a zero target while explicitly idle is shown as unknown
 - **Time in Stage** - Duration in current brewing stage
 - **Current Stage** - Active stage information
 - **Process Phase** - Current phase details from runtime telemetry
 - **Online Status** - Device connectivity status
-- **Online Since** - Timestamp of the last known online heartbeat (diagnostic)
+- **Online Since** - Start of the current observed online period; unavailable while offline (diagnostic)
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **User Action Required** - Notifications for required user actions
+- **Required Action** - Readable prompt such as `Place trub container`
 - **Next Action** - Timestamp for the next required user action
 - **Session ID** - Active brew session identifier (diagnostic)
 - **Brew Session Started** - Session start timestamp from MiniBrew session metadata (diagnostic)
 - **ESP Core Temperature** *(real-time MQTT)* - Internal controller temperature
 
 ### Keg Device Sensors
-- **Current Temperature** - Real-time keg temperature
-- **Target Temperature** - Configured serving temperature
+- **Current Temperature** - MQTT keg temperature with REST fallback; attributes identify `temperature_source` (`mqtt`/`rest`) and `rest_last_successful_poll`
+- **Target Temperature** - Configured serving temperature; a zero target while explicitly idle is shown as unknown
 - **Beer Name** - Currently loaded beer name (shows `Custom Fermentation` in custom fermentation mode, including inferred fermenting/primary sessions with unknown beer metadata)
 - **Beer Style** - Currently loaded beer style (`N/A` in custom fermentation mode)
 - **Online Status** - Device connectivity status
-- **Online Since** - Timestamp of the last known online heartbeat (diagnostic)
+- **Online Since** - Start of the current observed online period; unavailable while offline (diagnostic)
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **Action Required** - Notifications for required user actions
+- **Required Action** - Readable prompt such as `Place trub container`
 - **Next Action** - Timestamp for the next required user action
 - **Session ID** - Active brew session identifier (diagnostic)
 - **Brew Session Started** - Session start timestamp from MiniBrew session metadata (diagnostic)
@@ -82,13 +84,31 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 After adding the integration, you can configure additional options:
 
 - **Real-time discovery interval**: How often to refresh discovery and fallback data from REST while MQTT drives live telemetry (default: 300 seconds)
-- Some MQTT-backed sensors only appear once the device publishes the relevant telemetry. If the device is connected but a value is still unavailable, Home Assistant may show `Unknown` until that field arrives.
+- MQTT-backed sensors report `Unavailable` until fresh telemetry arrives from that device. If telemetry is arriving but an individual field is missing, that sensor reports `Unknown`.
 - The integration requests frequent device logs automatically and re-requests them after five seconds without incoming telemetry. Opening the MiniBrew portal or iOS app should not be necessary to start the stream; offline devices still cannot provide live data.
+- REST refreshes supplement discovery with device-status fields. Fresh, session-matching MQTT takes priority for required actions: a nonzero action code wins, otherwise recognized process states identify the prompt or clear it during automatic operation. Unrecognized/missing MQTT context falls back to REST. Independently, the MQTT countdown supplies `Next Action`, with REST as the timestamp fallback.
 
 To access options:
 1. Go to **Settings** → **Devices & Services**
 2. Find the MiniBrew integration
 3. Click **Configure**
+
+### Sensor availability and connectivity
+
+- Device information displays the MiniBrew firmware version without its ESP-IDF build suffix (for example, `3.2.3` instead of `3.2.3, idf-v4.2-50-g11005797d`). The original API value is unchanged.
+- **Unavailable** means the sensor's required data source cannot currently provide data. Current temperatures, target temperatures, and action reminders require a positive cloud online status or fresh device telemetry. Firmware update and cleaning status require an online device in a successful cloud response.
+- Measured-temperature attributes expose the selected `temperature_source` and `rest_last_successful_poll` (UTC). The latter is the integration's last successful REST refresh time, **not** the device's measurement time; the cloud does not establish measurement freshness. It remains unchanged on failed refreshes and may be present while MQTT supplies the value. Inspect these attributes in the entity's state details or Developer Tools → States.
+- On both Craft and Keg, current/target temperature, Required Action, User Action Required, and Next Action also expose a common `data_source` attribute and `rest_last_successful_poll`. Sources are selected per field, not simply by MQTT connection status: a missing MQTT field can still use REST while other fields use MQTT. `data_source` is `mqtt`, `rest`, or `mqtt_process_state` for an action inferred from MQTT process context; it is empty when no value is displayed. Next Action's source describes its deadline independently of `action_source`, which describes the current prompt. The existing `temperature_source` attribute remains available. REST-only metadata and MQTT-only diagnostics are unchanged.
+- **Unknown** means the required source is reachable but the individual value is absent. Missing action data is not treated as "No action required", and valid zero measurements are not hidden.
+- Beer metadata, current stage, and session metadata remain available while a device is offline if a successful cloud response still supplies that device. Missing metadata, such as a session ID when no session is active, reports `Unknown`.
+- Current Stage on both Craft and Keg uses the numeric process type: `0` Idle, `1` Brewing, `2`/`3` Cleaning, `4` Fermenting, `5` Serving, `6` Acid cleaning. Fresh, session-compatible MQTT takes priority over REST; missing or unknown process codes fall back to the cloud overview group. Idle does not mean clean; consult Required Action for prompts such as “Keg needs cleaning.” `data_source` and `rest_last_successful_poll` attributes expose provenance.
+- **Current Stage automation migration:** known process codes now produce `idle`, `brewing`, `cleaning`, `fermenting`, `serving`, or `acid_cleaning`. Update automations that matched the former broad `brew_clean_idle`/`brew_acid_clean_idle` tokens; those tokens now appear only as fallbacks when a known process code is unavailable.
+- **Cloud Connection** reports `Offline` when REST explicitly reports the device offline; MQTT cannot override that status. A missing cloud status reports `Unknown` unless fresh permitted telemetry establishes connectivity. A failed cloud refresh makes it `Unavailable`. The **MQTT** diagnostic reports the broker connection separately: a connected broker alone does not prove a Craft or Keg is online.
+- REST controls MQTT startup and retries. A device must be explicitly online **and** report a known non-idle `process_type`: brewing, fermentation, serving, or cleaning (including acid cleaning). Online-but-idle devices, missing/unknown process types, and a session ID alone do not enable MQTT. A failed REST overview refresh pauses MQTT too. When no eligible devices remain, the connection is stopped and retries are cancelled. A successful REST refresh reporting an eligible device resumes MQTT; only eligible devices are subscribed. With multiple devices, the shared broker connection can remain active for an eligible device while another device is idle/offline. Process starts and stops are discovered on the configured REST discovery interval (default: 300 seconds). Cloud Connection and Online Since still reflect device connectivity, even while MQTT is intentionally paused for an idle device.
+- MQTT-only readings (process phase, Peltier power/mode, fan duty, controller temperature, and button) require device-specific telemetry received within the last **60 seconds** and an active MQTT connection. Cached telemetry is discarded on disconnection and expires after 60 seconds of silence, independently of REST polling.
+- **Online Since** stays fixed throughout the current observed online period, becomes `Unavailable` when connectivity is lost, and restarts on reconnection. If Home Assistant starts while a device is already online, this is the time it first observed the device online, not the device's actual connection time. The entity's unique ID is unchanged.
+- **Next Action** follows the current reported deadline, rounded to the minute, including overdue deadlines. It does not pin old timestamps across session changes. MQTT action `0` is undefined: recognized process states identify a pending prompt or clear a completed prompt; without that context, REST is used. A future countdown alone does not imply user action is currently required. Different-session telemetry cannot restore old reminders. An explicitly idle REST process clears session metadata even if a stale session ID remains; independent cleaning prompts remain supported.
+- An explicit REST session value, including `session_id: null`, takes precedence over cached session metadata. A session lookup completing after a reset cannot restore the ended session's per-device start time. Process phase `None` alone is not treated as proof of session completion; the portal's idle response explicitly reports `process_type: 0`, `stage: "Idle"`, and `session_id: null`.
 
 ## Requirements
 
@@ -102,6 +122,47 @@ To access options:
 This integration uses the [pymbrewclient](https://github.com/stuartp44/pymbrewclient) library to communicate with the MiniBrew API.
 
 ## Usage
+
+### Translations and compatibility
+
+Sensor display names are supplied by Home Assistant's entity translations.
+Enum display labels (including required actions and process phases) are translated
+using stable lowercase state tokens. Unique IDs and existing entity IDs are
+unchanged.
+User-customized entity names are not overwritten.
+
+**Breaking change:** automations, templates, and dashboards that compare raw enum
+states must use the new tokens, not the English display labels. Home Assistant
+continues to display translated human-readable labels.
+
+| Sensor | Previous raw state | New raw state |
+| --- | --- | --- |
+| User Action Required | `Action required` / `No action required` | `action_required` / `no_action_required` |
+| Required Action | `Place trub container` / `Add ingredient` | `place_trub_container` / `add_ingredient` |
+| Cloud Connection | `Online` / `Offline` | `online` / `offline` |
+| Update Status | `Updating` / `Not updating` | `updating` / `not_updating` |
+| Current Stage | `Clean and ready to brew` / `Ready to clean` | `brew_clean_idle` / `brew_acid_clean_idle` |
+| Current Stage | `Fermenting` / `Serving` | `fermenting` / `serving` |
+| Process Phase | `Primary` / `None` | `primary` / `none` |
+| Needs Cleaning | `Needs cleaning` / `Clean` | `needs_cleaning` / `clean` |
+| Peltier Mode | `Cooling` / `Warming` / `Idle` | `cooling` / `warming` / `idle` |
+| Button | `On` / `Off` | `on` / `off` |
+
+Other action and process-phase labels use their lowercase, underscore-separated
+equivalents. Update, for example,
+`is_state('sensor.keg_user_action_required', 'Action required')` to
+`is_state('sensor.keg_user_action_required', 'action_required')`.
+Temperature readings, timestamp sensors (including Next Action), and server-provided
+beer metadata are unchanged.
+
+English is currently the only bundled language; additional languages can translate
+the same keys without changing integration code. Recipe/beer names and other
+server-provided free text remain source data, not translation keys. Unknown future
+action codes use `unknown_action` (displayed as "Unknown action"); source codes
+remain available in `rest_user_action` and `mqtt_user_action` attributes.
+The `required_action` diagnostic attribute also uses the new action token.
+Other diagnostic attribute keys and values remain unchanged; they are not
+localized prose.
 
 Once configured, your MiniBrew devices will appear as separate devices in Home Assistant with all associated sensors. You can:
 
@@ -122,9 +183,28 @@ Once configured, your MiniBrew devices will appear as separate devices in Home A
 - Check if the MiniBrew service is online
 - Review Home Assistant logs for detailed error messages
 
+### Memory and lifecycle
+
+The integration retains only the latest MQTT message per active device and
+session-start timestamps for current sessions. Removed devices, expired telemetry,
+and stopped MQTT streams release their telemetry metadata and expiry timers.
+The discovery listener is unsubscribed when the config entry unloads.
+
+Regression tests exercise 10,000 messages with object-retention checks, 500
+successive sessions, timer cleanup, and discovery-listener teardown. These check
+bounded retention in the integration, including 100 start/stop cycles with fake
+MQTT clients; they are not a long-running memory profile
+of a live Home Assistant process or its MQTT/network dependencies.
+
 ### Enable debug logging
 
-Add the following to your `configuration.yaml`:
+On the MiniBrew integration page in Home Assistant, select **Enable debug
+logging** from the integration menu. This includes the integration and the
+`pymbrewclient` REST/MQTT library. Disable debug logging after reproducing the
+issue; Home Assistant restores the previous logging levels.
+
+Alternatively, add the following to your `configuration.yaml` for persistent
+logging:
 
 ```yaml
 logger:
@@ -133,6 +213,61 @@ logger:
     custom_components.minibrew: debug
     pymbrewclient: debug
 ```
+
+### Action required but Next Action is Unknown
+
+`Next Action` is a timestamp, not the description of the required action.
+MiniBrew can report a pending action without providing a REST deadline. The MQTT
+countdown is used independently when available, even if its action field is zero
+and REST reports a pending instruction. `Next Action` remains a timestamp sensor;
+it is unknown only when neither applicable source supplies a usable timestamp.
+`Required Action` shows the reconciled prompt (for example, `Place trub container`),
+`No action required` when explicitly cleared, or `Unknown` when no action data is
+available. Unrecognized action codes are displayed explicitly rather than guessed.
+
+The action sensors and `Next Action` expose diagnostic attributes:
+`rest_user_action`, `mqtt_user_action`, `rest_next_action_at`,
+`mqtt_next_action_at`, `mqtt_seconds_until_next_action`,
+`mqtt_session_matches`, `action_conflict`, `action_source`, and `deadline_status`.
+`action_source` identifies `mqtt`, `mqtt_process_state`, or `rest`. MQTT must
+be fresh, connected, and applicable to the current session; disconnected/expired
+telemetry falls back to REST. Recognized waiting states cover fermentation
+preparation, airlock/trub/ingredient prompts, gravity-sensor pairing, and tap
+mounting. Idle, temperature-control, cooling-before-serving, and carbonation
+states clear old prompts when no nonzero MQTT action is supplied. Unknown states
+fall back rather than guessing. Numeric source action attributes remain unchanged
+so an undefined raw MQTT action can be distinguished from a derived prompt.
+`deadline_status: deadline_not_provided` explains why a pending action has an
+unknown timestamp. Raw MQTT values remain visible for diagnosis even if excluded
+from reconciliation; a different session is flagged and is not compared as an
+action conflict. Failed/offline REST data is not presented as current.
+These attributes explain source discrepancies; they do not change the MQTT
+process phase or infer a deadline from the process state.
+The same sensors also expose `required_action` and `action_status` (for example,
+`place_trub_container` and `Waiting for user action`). `waiting_since` is the
+REST-reported process-state entry time, included only while the pending action
+matches the current REST action. It is not a due date, is cleared when the action
+clears or changes, and remains empty when no trustworthy time is available.
+
+The [anonymized live-capture excerpt](tests/fixtures/pending_action_mqtt.json)
+demonstrates this case:
+
+- REST reports action `30` (place trub container), process state `78`, and no deadline.
+- MQTT reports the same session and process state, but action `0` (undefined).
+- Two MQTT messages 29.020 seconds apart both report `604800` seconds (seven days)
+  until the next action. The calculated timestamp advances rather than counting down.
+- The integration derives action `30` from MQTT process state `78`, matching REST,
+  and uses the MQTT timestamp for
+  `Next Action`. The current instruction and next-action estimate are independent;
+  the estimate is not rejected merely because the countdown remains constant
+  while the device waits.
+
+The excerpt contains only selected decoded fields from the first and last messages
+of a 30-message capture. Device and session identifiers and absolute timestamps are
+replaced with example values; relative timing and relevant protocol values are
+preserved. Raw protobuf payloads and unrelated metadata are deliberately excluded
+to avoid publishing identifying or unknown embedded fields. This sample documents
+observed behavior, not a claim that all MQTT countdowns behave this way.
 
 ## Contributing
 

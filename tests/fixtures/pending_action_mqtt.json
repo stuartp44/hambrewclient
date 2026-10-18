@@ -1,0 +1,46 @@
+{
+  "description": "Anonymized decoded excerpts from a live pending-action capture; not raw MQTT packets.",
+  "anonymization": {
+    "replaced": ["device identifiers", "session identifier", "absolute timestamps"],
+    "omitted": ["raw protobuf payloads", "sequence numbers", "device names", "firmware", "images", "unrelated measurements"],
+    "preserved": ["process state", "user action", "process phase", "countdown", "relative message timing"]
+  },
+  "rest_device": {
+    "serial_number": "example-keg",
+    "current_state": 2,
+    "process_type": 4,
+    "process_state": 78,
+    "user_action": 30,
+    "active_session": 100,
+    "process_estimate_remaining": null,
+    "text": "Needs your attention"
+  },
+  "mqtt_messages": [
+    {
+      "topic": "devices/logs/example-keg",
+      "device_uuid": "example-keg",
+      "session_id": 100,
+      "device_timestamp": "2025-01-01T00:00:00.000000Z",
+      "current_state": 2,
+      "process_type": 4,
+      "process_state": 78,
+      "user_action": 0,
+      "process_phase": 5,
+      "seconds_until_next_action": 604800,
+      "next_action_at": "2025-01-08T00:00:00.000000Z"
+    },
+    {
+      "topic": "devices/logs/example-keg",
+      "device_uuid": "example-keg",
+      "session_id": 100,
+      "device_timestamp": "2025-01-01T00:00:29.020000Z",
+      "current_state": 2,
+      "process_type": 4,
+      "process_state": 78,
+      "user_action": 0,
+      "process_phase": 5,
+      "seconds_until_next_action": 604800,
+      "next_action_at": "2025-01-08T00:00:29.020000Z"
+    }
+  ]
+}
