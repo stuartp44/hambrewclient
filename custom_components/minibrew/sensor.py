@@ -152,6 +152,8 @@ def _session_id_from_device_dict(device_dict):
     """Return (session_id, key_present) from API device payload fields."""
     if not isinstance(device_dict, dict):
         return None, False
+    if device_dict.get("process_type") == 0:
+        return None, True
     if "active_session" in device_dict:
         return _coerce_session_id(device_dict.get("active_session")), True
     if "session_id" in device_dict:
@@ -564,8 +566,26 @@ def _required_action_description(device):
     return action.name.removeprefix("ACTION_").lower()
 
 
-class _ActionDiagnosticsMixin:
+class _SourceDiagnosticsMixin:
+    """Expose the selected field's source and the REST refresh time."""
+
+    @property
+    def extra_state_attributes(self):
+        device = self._get_latest_device() or {}
+        source = device.get("_field_sources", {}).get(self._source_field)
+        if self.native_value is None:
+            source = None
+        polled_at = self.coordinator.last_rest_poll
+        return {
+            "data_source": source,
+            "rest_last_successful_poll": polled_at.isoformat() if polled_at else None,
+        }
+
+
+class _ActionDiagnosticsMixin(_SourceDiagnosticsMixin):
     """Expose source disagreements without changing the reconciled state."""
+
+    _source_field = "user_action"
 
     @property
     def extra_state_attributes(self):
@@ -590,6 +610,10 @@ class _ActionDiagnosticsMixin:
             # This is the reported state-entry time, not an inferred deadline.
             waiting_since = _coerce_timestamp(rest.get("last_process_state_change"))
         return {
+            **super().extra_state_attributes,
+            "action_source": device.get("action_source") or (
+                "rest" if rest_action is not None else None
+            ),
             "required_action": _required_action_description(device),
             "action_status": (
                 "Waiting for user action" if action_state == "action_required"
@@ -816,6 +840,7 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
         self._session_lookup_inflight = set()
         self._session_model_mismatch_logged = False
         self._online_since = {}
+        self.last_rest_poll = None
 
         super().__init__(
             hass,
@@ -857,6 +882,7 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
         if self.realtime is not None:
             await self.realtime.async_set_online_devices(_mqtt_serials(data))
 
+        self.last_rest_poll = datetime.now(timezone.utc)
         return data
 
     def get_telemetry(self, serial):
@@ -928,6 +954,11 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
                 "process_estimate_remaining_seconds", "updating", "needs_acid_cleaning",
             ):
                 merged.pop(key, None)
+        merged["_field_sources"] = {
+            key: "rest"
+            for key in ("current_temp", "target_temp", "process_estimate_remaining")
+            if merged.get(key) is not None
+        }
         rest_session, session_present = _session_id_from_device_dict(merged)
         if (
             not session_present
@@ -944,6 +975,11 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
                 or _coerce_session_id(telemetry_session) == rest_session
             )
             overlay_mqtt(merged, telemetry, include_session=include_session)
+        action_source = merged.get("action_source")
+        if action_source is None and _user_action_required_state(merged) is not None:
+            action_source = "rest"
+        merged["_field_sources"]["user_action"] = action_source
+        merged["temperature_source"] = merged["_field_sources"].get("current_temp")
         if session_present:
             merged["active_session"] = rest_session
         active_session, _ = _session_id_from_device_dict(merged)
@@ -959,6 +995,8 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
                 self.hass.async_create_task(
                     self._async_ensure_session_created(serial, active_session)
                 )
+        if merged.get("process_type") == ProcessType.PROC_IDLE and merged.get("target_temp") == 0:
+            merged["target_temp"] = None
         return merged
 
     async def _async_ensure_session_created(self, serial, session_id):
@@ -1135,7 +1173,19 @@ class CraftSensor(SensorEntity):
         """Get the latest device data (REST overlaid with live telemetry)."""
         return self.coordinator.get_merged_device(self.device_id, self.device_type)
 
-class CraftSensorCurrentTemperatureSensor(CraftSensor):
+class _TemperatureDiagnosticsMixin(_SourceDiagnosticsMixin):
+    """Expose provenance without claiming the cloud value's measurement time."""
+
+    _source_field = "current_temp"
+
+    @property
+    def extra_state_attributes(self):
+        attributes = super().extra_state_attributes
+        attributes["temperature_source"] = attributes["data_source"]
+        return attributes
+
+
+class CraftSensorCurrentTemperatureSensor(_TemperatureDiagnosticsMixin, CraftSensor):
     """Sensor for the current temperature of the Craft device."""
 
     _attr_translation_key = "current_temperature"
@@ -1166,12 +1216,13 @@ class CraftSensorCurrentTemperatureSensor(CraftSensor):
         return f"{self.device_id}_current_temperature"
 
 
-class CraftSensorTargetTemperatureSensor(CraftSensor):
+class CraftSensorTargetTemperatureSensor(_SourceDiagnosticsMixin, CraftSensor):
     """Sensor for the target temperature of the Craft device."""
 
     _attr_translation_key = "target_temperature"
 
     _legacy_name = 'Target Temperature'
+    _source_field = "target_temp"
 
     @property
     
@@ -1414,6 +1465,7 @@ class CraftNextActionDateTimeSensor(_ActionDiagnosticsMixin, CraftSensor):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     _legacy_name = 'Next Action'
+    _source_field = "process_estimate_remaining"
 
     @property
     def native_value(self):
@@ -1655,7 +1707,7 @@ class KegSensor(SensorEntity):
         """Get the latest device data (REST overlaid with live telemetry)."""
         return self.coordinator.get_merged_device(self.device_id, self.device_type)
 
-class KegCurrentTemperatureSensor(KegSensor):
+class KegCurrentTemperatureSensor(_TemperatureDiagnosticsMixin, KegSensor):
     """Sensor for the current temperature of the Keg device."""
 
     _attr_translation_key = "temperature"
@@ -1685,12 +1737,13 @@ class KegCurrentTemperatureSensor(KegSensor):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_{self._legacy_name}"
 
-class KegTargetTemperatureSensor(KegSensor):
+class KegTargetTemperatureSensor(_SourceDiagnosticsMixin, KegSensor):
     """Sensor for the target temperature of the Keg device."""
 
     _attr_translation_key = "target_temperature"
 
     _legacy_name = 'Target Temperature'
+    _source_field = "target_temp"
 
     @property
     
@@ -2021,6 +2074,7 @@ class KegNextActionDateTimeSensor(_ActionDiagnosticsMixin, KegSensor):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     _legacy_name = 'Next Action'
+    _source_field = "process_estimate_remaining"
 
     @property
     def native_value(self):

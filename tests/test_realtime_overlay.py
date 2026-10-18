@@ -104,6 +104,43 @@ def test_user_action_zero_preserves_pending_rest_action():
     assert device["user_action"] == 5
 
 
+def test_mqtt_process_prompt_wins_when_action_code_is_undefined():
+    device = {"user_action": 0}
+    realtime.overlay_mqtt(device, _telemetry(user_action=0, process_state=78))
+    assert device["user_action"] == 30
+    assert device["action_source"] == "mqtt_process_state"
+
+
+def test_mqtt_process_transition_clears_completed_prompt():
+    device = {"user_action": 30}
+    realtime.overlay_mqtt(device, _telemetry(user_action=0, process_state=80))
+    assert device["user_action"] == 0
+    assert device["action_source"] == "mqtt_process_state"
+
+
+def test_unknown_mqtt_process_uses_rest_instead_of_guessing():
+    device = {"user_action": 38}
+    realtime.overlay_mqtt(device, _telemetry(user_action=0, process_state=999))
+    assert device["user_action"] == 38
+    assert device["action_source"] == "rest"
+
+
+def test_nonzero_mqtt_action_has_priority_over_process_state():
+    device = {"user_action": 30}
+    realtime.overlay_mqtt(device, _telemetry(user_action=4, process_state=78))
+    assert device["user_action"] == 4
+    assert device["action_source"] == "mqtt"
+
+
+def test_different_session_cannot_derive_a_prompt_from_mqtt_process():
+    device = {"user_action": 0}
+    realtime.overlay_mqtt(
+        device, _telemetry(user_action=0, process_state=78), include_session=False
+    )
+    assert device["user_action"] == 0
+    assert device["action_source"] == "rest"
+
+
 def test_missing_user_action_preserves_rest():
     device = {"user_action": 5}
     realtime.overlay_mqtt(device, _telemetry(user_action=None))

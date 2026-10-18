@@ -45,6 +45,21 @@ _FINGERPRINT_ATTRS = tuple(
     attr for attr in _TELEMETRY_TO_DEVICE_KEY if attr != "seconds_until_next_action"
 )
 
+# Process-state/action pairs defined by the client protocol enums. State 78
+# reporting action 0 was also verified in the anonymized live capture.
+_PROCESS_STATE_ACTIONS = {
+    75: 26,  # Prepare fermentation.
+    76: 28,  # Place airlock.
+    77: 29,  # Remove airlock.
+    78: 30,  # Place trub container.
+    81: 8,   # Remove trub.
+    82: 4,   # Add ingredient.
+    83: 5,   # Remove ingredient.
+    85: 36,  # Pair gravity sensor.
+    91: 10,  # Mount tap.
+}
+_AUTOMATIC_PROCESS_STATES = {0, 80, 90, 92, 94}
+
 def _normalize_fingerprint_value(value, *, trim_to_minute=False):
     """Normalize values for stable change detection."""
     if isinstance(value, datetime):
@@ -79,25 +94,38 @@ def overlay_mqtt(device: dict, telemetry, *, include_session=True) -> None:
     """Overlay live MQTT telemetry onto a REST device dict, in place.
 
     Only non-``None`` telemetry values win, so a missing field never clobbers
-    the value from the last REST poll. A pending REST action is preserved when
-    MQTT supplies no action context; the MQTT countdown is independent of it.
+    the value from the last REST poll. MQTT action/process context takes priority
+    over REST; undefined action codes without recognized context fall back to REST.
+    The MQTT countdown is independent of the current user prompt.
     """
     if telemetry is None:
         return
-    rest_action = device.get("user_action")
-    preserve_rest_action = (
-        isinstance(rest_action, (int, float))
-        and rest_action > 0
-        and getattr(telemetry, "user_action", None) in (None, 0)
-    )
+    action = getattr(telemetry, "user_action", None)
+    process_state = getattr(telemetry, "process_state", None)
+    device["action_source"] = "rest" if device.get("user_action") is not None else None
+    if include_session:
+        if action is not None and action > 0:
+            device["user_action"] = action
+            device["action_source"] = "mqtt"
+        elif process_state in _PROCESS_STATE_ACTIONS:
+            device["user_action"] = _PROCESS_STATE_ACTIONS[process_state]
+            device["action_source"] = "mqtt_process_state"
+        elif process_state in _AUTOMATIC_PROCESS_STATES:
+            device["user_action"] = 0
+            device["action_source"] = "mqtt_process_state"
+        elif action == 0 and device.get("user_action") is None:
+            device["user_action"] = 0
+            device["action_source"] = "mqtt"
     for attr, device_key in _TELEMETRY_TO_DEVICE_KEY.items():
         if not include_session and attr not in {"current_temperature"}:
             continue
-        if preserve_rest_action and attr == "user_action":
+        if attr == "user_action":
             continue
         value = getattr(telemetry, attr, None)
         if value is not None:
             device[device_key] = value
+            if device_key in {"current_temp", "target_temp", "process_estimate_remaining"}:
+                device.setdefault("_field_sources", {})[device_key] = "mqtt"
 
 
 class MiniBrewRealtimeManager:

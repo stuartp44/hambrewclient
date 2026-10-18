@@ -157,6 +157,58 @@ def _load_sensor_reads():
 sensor = _load_sensor_reads()
 
 
+def test_manifest_registers_client_logger_for_home_assistant_debug_logging():
+    manifest = json.loads((_ROOT / "manifest.json").read_text())
+    assert "pymbrewclient" in manifest["loggers"]
+
+
+@pytest.mark.parametrize(
+    ("current_class", "target_class"),
+    [
+        ("CraftSensorCurrentTemperatureSensor", "CraftSensorTargetTemperatureSensor"),
+        ("KegCurrentTemperatureSensor", "KegTargetTemperatureSensor"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("process_type", "target", "expected"),
+    [(0, 0.0, None), (0, 18.0, 18.0), (4, 0.0, 0.0), (5, 0.0, 0.0),
+     (None, 0.0, 0.0), (0, None, None)],
+)
+@pytest.mark.parametrize("use_mqtt", [False, True])
+def test_idle_zero_target_is_unknown_without_hiding_measured_or_active_temperatures(
+    current_class, target_class, process_type, target, expected, use_mqtt
+):
+    serial = "example-keg"
+    device = {
+        "serial_number": serial, "online": True, "process_type": process_type,
+        "current_temp": 18.1, "target_temp": target,
+    }
+    telemetry = (
+        {serial: SimpleNamespace(
+            current_temperature=18.1, target_temperature=None,
+            process_type=process_type,
+        )}
+        if use_mqtt else None
+    )
+    coordinator = _coordinator({"brew_clean_idle": [device]}, telemetry=telemetry)
+    assert _entity(current_class, coordinator, serial, "brew_clean_idle").native_value == 18.1
+    assert _entity(target_class, coordinator, serial, "brew_clean_idle").native_value == expected
+    assert device["target_temp"] == target
+
+
+@pytest.mark.parametrize(("rest_process", "mqtt_process", "expected"), [(4, 0, None), (0, 4, 0.0)])
+def test_idle_target_uses_effective_mqtt_process(rest_process, mqtt_process, expected):
+    serial = "example-keg"
+    coordinator = _coordinator(
+        {"brew_clean_idle": [{
+            "serial_number": serial, "online": True, "process_type": rest_process,
+            "target_temp": 0.0,
+        }]},
+        telemetry={serial: SimpleNamespace(process_type=mqtt_process, target_temperature=0.0)},
+    )
+    assert coordinator.get_merged_device(serial, "brew_clean_idle")["target_temp"] == expected
+
+
 @pytest.mark.parametrize("class_name", ["CraftSensor", "KegSensor"])
 @pytest.mark.parametrize(
     ("raw", "expected"),
@@ -192,6 +244,7 @@ def _coordinator(groups, *, telemetry=None):
     coordinator._session_created_by_id = {}
     coordinator._online_since = {}
     coordinator.last_update_success = True
+    coordinator.last_rest_poll = None
     coordinator.hass = SimpleNamespace(async_create_task=Mock())
     return coordinator
 
@@ -202,6 +255,139 @@ def _entity(class_name, coordinator, serial, state):
     entity.device_id = serial
     entity.device_type = state
     return entity
+
+
+@pytest.mark.parametrize("class_name", [
+    "CraftSensorCurrentTemperatureSensor", "KegCurrentTemperatureSensor",
+])
+def test_temperature_reports_selected_source_through_mqtt_disconnect(class_name):
+    serial = "example-keg"
+    coordinator = _coordinator(
+        {"brew_clean_idle": [{
+            "serial_number": serial, "online": True, "current_temp": 18.3,
+        }]},
+        telemetry={serial: SimpleNamespace(current_temperature=18.4)},
+    )
+    polled_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    coordinator.last_rest_poll = polled_at
+    entity = _entity(class_name, coordinator, serial, "brew_clean_idle")
+    assert entity.native_value == 18.4
+    assert entity.extra_state_attributes == {
+        "data_source": "mqtt",
+        "temperature_source": "mqtt",
+        "rest_last_successful_poll": polled_at.isoformat(),
+    }
+    coordinator.realtime.get_telemetry = lambda serial: None
+    assert entity.native_value == 18.3
+    assert entity.extra_state_attributes["temperature_source"] == "rest"
+    coordinator.last_update_success = False
+    assert entity.native_value is None
+    assert entity.extra_state_attributes["temperature_source"] is None
+    assert entity.extra_state_attributes["rest_last_successful_poll"] == polled_at.isoformat()
+    coordinator.realtime.get_telemetry = lambda serial: SimpleNamespace(current_temperature=18.5)
+    assert entity.native_value == 18.5
+    assert entity.extra_state_attributes["temperature_source"] == "mqtt"
+
+
+def test_temperature_source_is_rest_when_mqtt_omits_temperature():
+    coordinator = _coordinator(
+        {"serving": [{"serial_number": "example-keg", "online": True, "current_temp": 0.0}]},
+        telemetry={"example-keg": SimpleNamespace(current_temperature=None)},
+    )
+    entity = _entity("KegCurrentTemperatureSensor", coordinator, "example-keg", "serving")
+    assert entity.native_value == 0.0
+    assert entity.extra_state_attributes == {
+        "data_source": "rest", "temperature_source": "rest", "rest_last_successful_poll": None,
+    }
+
+
+@pytest.mark.parametrize("class_name", [
+    "CraftSensorTargetTemperatureSensor", "KegTargetTemperatureSensor",
+    "CraftRequiredActionSensor", "KegRequiredActionSensor",
+    "CraftUserActionRequiredSensor", "KegActionRequiredSensor",
+    "CraftNextActionDateTimeSensor", "KegNextActionDateTimeSensor",
+])
+def test_shared_source_attributes_follow_selected_field_and_rest_fallback(class_name):
+    serial = "example-keg"
+    deadline = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    rest = {
+        "serial_number": serial, "online": True, "active_session": 100,
+        "target_temp": 18.0, "user_action": 30, "process_estimate_remaining": deadline,
+    }
+    mqtt = SimpleNamespace(
+        session_id=100, target_temperature=19.0, user_action=4,
+        next_action_at=deadline + timedelta(hours=1),
+    )
+    coordinator = _coordinator({"fermenting": [rest]}, telemetry={serial: mqtt})
+    coordinator._session_created_by_id[100] = deadline
+    coordinator.last_rest_poll = deadline - timedelta(hours=1)
+    entity = _entity(class_name, coordinator, serial, "fermenting")
+    attrs = entity.extra_state_attributes
+    assert attrs["data_source"] == "mqtt"
+    assert attrs["rest_last_successful_poll"] == coordinator.last_rest_poll.isoformat()
+    if "NextAction" in class_name:
+        # A REST-derived action must not mislabel an MQTT-supplied deadline.
+        mqtt.user_action = None
+        assert entity.extra_state_attributes["action_source"] == "rest"
+        assert entity.extra_state_attributes["data_source"] == "mqtt"
+    mqtt.session_id = 200
+    assert entity.extra_state_attributes["data_source"] == "rest"
+    coordinator.realtime.get_telemetry = lambda serial: None
+    assert entity.extra_state_attributes["data_source"] == "rest"
+    coordinator.last_update_success = False
+    assert entity.extra_state_attributes["data_source"] is None
+
+
+@pytest.mark.parametrize("class_name", [
+    "CraftRequiredActionSensor", "KegRequiredActionSensor",
+    "CraftUserActionRequiredSensor", "KegActionRequiredSensor",
+])
+def test_action_source_attributes_identify_mqtt_process_inference(class_name):
+    serial = "example-keg"
+    coordinator = _coordinator(
+        {"fermenting": [{"serial_number": serial, "online": True, "user_action": 0}]},
+        telemetry={serial: SimpleNamespace(user_action=0, process_state=78)},
+    )
+    entity = _entity(class_name, coordinator, serial, "fermenting")
+    assert entity.extra_state_attributes["data_source"] == "mqtt_process_state"
+    assert entity.extra_state_attributes["action_source"] == "mqtt_process_state"
+
+
+@pytest.mark.parametrize("class_name", [
+    "CraftSensorTargetTemperatureSensor", "KegTargetTemperatureSensor",
+])
+def test_suppressed_idle_target_has_no_selected_source(class_name):
+    coordinator = _coordinator({"brew_clean_idle": [{
+        "serial_number": "example-keg", "online": True, "process_type": 0, "target_temp": 0.0,
+    }]})
+    entity = _entity(class_name, coordinator, "example-keg", "brew_clean_idle")
+    assert entity.native_value is None
+    assert entity.extra_state_attributes["data_source"] is None
+
+
+def test_sources_are_selected_per_field_without_mutating_rest_data():
+    serial = "example-keg"
+    rest = {
+        "serial_number": serial, "online": True,
+        "current_temp": 18.3, "target_temp": 18.0, "user_action": 30,
+    }
+    coordinator = _coordinator(
+        {"fermenting": [rest]},
+        telemetry={serial: SimpleNamespace(current_temperature=18.4, user_action=0)},
+    )
+    assert _entity(
+        "KegCurrentTemperatureSensor", coordinator, serial, "fermenting"
+    ).extra_state_attributes["data_source"] == "mqtt"
+    assert _entity(
+        "KegTargetTemperatureSensor", coordinator, serial, "fermenting"
+    ).extra_state_attributes["data_source"] == "rest"
+    assert _entity(
+        "KegRequiredActionSensor", coordinator, serial, "fermenting"
+    ).extra_state_attributes["data_source"] == "rest"
+    assert "_field_sources" not in rest
+    first = coordinator.get_merged_device(serial, "fermenting")
+    first["_field_sources"]["target_temp"] = "mqtt"
+    assert coordinator.get_merged_device(serial, "fermenting")["_field_sources"]["target_temp"] == "rest"
 
 
 class _NoDeepCopy:
@@ -563,6 +749,50 @@ def test_unknown_action_has_a_translated_finite_option_and_keeps_source_code(pre
 
 
 @pytest.mark.parametrize("prefix", ["Craft", "Keg"])
+def test_mqtt_prompt_and_clear_update_both_action_sensors_then_fall_back(prefix):
+    serial = "example-keg"
+    rest = {"serial_number": serial, "online": True, "user_action": 0, "active_session": 100}
+    telemetry = SimpleNamespace(session_id=100, process_state=78, user_action=0)
+    coordinator = _coordinator({"fermenting": [rest]}, telemetry={serial: telemetry})
+    coordinator._session_created_by_id[100] = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    prompt = _entity(f"{prefix}RequiredActionSensor", coordinator, serial, "fermenting")
+    status_name = "CraftUserActionRequiredSensor" if prefix == "Craft" else "KegActionRequiredSensor"
+    status = _entity(status_name, coordinator, serial, "fermenting")
+    assert prompt.native_value == "place_trub_container"
+    assert status.native_value == "action_required"
+    assert prompt.extra_state_attributes["action_source"] == "mqtt_process_state"
+    rest["user_action"] = 30
+    telemetry.process_state = 80
+    assert prompt.native_value == "no_action_required"
+    assert status.native_value == "no_action_required"
+    coordinator.realtime.get_telemetry = lambda serial: None
+    assert prompt.native_value == "place_trub_container"
+    assert prompt.extra_state_attributes["action_source"] == "rest"
+
+
+def test_explicit_idle_process_clears_stale_rest_session_metadata():
+    serial = "example-keg"
+    device = {
+        "serial_number": serial, "online": True, "process_type": 0,
+        "active_session": 100, "session_id": 100, "user_action": 38,
+    }
+    coordinator = _coordinator({"brew_clean_idle": [device]})
+    when = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    coordinator._session_created_by_id[100] = when
+    coordinator._active_session_by_serial[serial] = 100
+    merged = coordinator.get_merged_device(serial, "fermenting")
+    assert "active_session" not in merged
+    assert "session_created" not in merged
+    assert merged["user_action"] == 38
+    coordinator.hass.async_create_task.assert_not_called()
+    coordinator._async_fetch_session_started = AsyncMock()
+    asyncio.run(coordinator._async_refresh_session_metadata(coordinator.data))
+    assert coordinator._active_session_by_serial[serial] is None
+    assert coordinator._session_created_by_id == {}
+    coordinator._async_fetch_session_started.assert_not_awaited()
+
+
+@pytest.mark.parametrize("prefix", ["Craft", "Keg"])
 def test_action_diagnostics_do_not_reuse_failed_rest_or_previous_session(prefix):
     device = {
         "serial_number": "example-keg", "online": True, "user_action": 30,
@@ -648,6 +878,8 @@ def test_coordinator_refresh_merges_device_status_before_publishing_overview():
 
     assert result is overview
     assert result.fermenting[0]["user_action"] == 30
+    assert coordinator.last_rest_poll is not None
+    assert coordinator.last_rest_poll.tzinfo == timezone.utc
     coordinator._async_refresh_session_metadata.assert_awaited_once_with(overview)
 
 
@@ -1153,6 +1385,8 @@ def test_failed_rest_refresh_pauses_mqtt_before_raising(error):
     from unittest.mock import AsyncMock
 
     coordinator = _coordinator({})
+    polled_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    coordinator.last_rest_poll = polled_at
     coordinator.client = SimpleNamespace(get_brewery_overview=Mock(side_effect=error))
     coordinator.realtime = SimpleNamespace(async_set_online_devices=AsyncMock())
 
@@ -1163,3 +1397,4 @@ def test_failed_rest_refresh_pauses_mqtt_before_raising(error):
     with pytest.raises((RuntimeError, PermissionError)):
         asyncio.run(coordinator._async_update_data())
     coordinator.realtime.async_set_online_devices.assert_awaited_once_with(set())
+    assert coordinator.last_rest_poll == polled_at
