@@ -367,7 +367,7 @@ def test_discovery_and_supplemental_timestamps_preserved():
     ],
 )
 @pytest.mark.parametrize("mqtt_action", [None, 0])
-def test_device_attention_and_deadline_survive_mqtt_countdown(
+def test_device_attention_survives_independent_mqtt_countdown(
     action_class, time_class, mqtt_action
 ):
     serial = "example-keg"
@@ -405,10 +405,10 @@ def test_device_attention_and_deadline_survive_mqtt_countdown(
 
     assert action.native_value == "Action required"
     next_value = next_action.native_value
-    assert next_value == deadline.replace(second=0, microsecond=0)
+    assert next_value == datetime(2099, 1, 1, tzinfo=timezone.utc)
     merged = coordinator.get_merged_device(serial, "fermenting")
     assert merged["process_state"] == 78
-    assert merged["process_estimate_remaining"] == deadline
+    assert merged["process_estimate_remaining"] == next_value
     assert next_action.native_value == next_value
 
     sensor._merge_device_status_from_devices(
@@ -428,7 +428,7 @@ def test_device_attention_and_deadline_survive_mqtt_countdown(
         ("KegActionRequiredSensor", "KegNextActionDateTimeSensor"),
     ],
 )
-def test_anonymized_capture_reports_required_action_with_unknown_deadline(action_class, time_class):
+def test_anonymized_capture_reports_rest_action_and_mqtt_deadline(action_class, time_class):
     fixture = Path(__file__).parent / "fixtures" / "pending_action_mqtt.json"
     capture = json.loads(fixture.read_text())
     rest_device = capture["rest_device"]
@@ -456,7 +456,7 @@ def test_anonymized_capture_reports_required_action_with_unknown_deadline(action
         assert action.available
         assert action.native_value == "Action required"
         assert next_action.available
-        assert next_action.native_value is None
+        assert next_action.native_value == message["next_action_at"].replace(second=0, microsecond=0)
         assert prompt.native_value == "Place trub container"
         assert prompt.unique_id == f"{serial}_required_action"
         for entity in (action, next_action, prompt):
@@ -468,7 +468,7 @@ def test_anonymized_capture_reports_required_action_with_unknown_deadline(action
             assert attrs["mqtt_seconds_until_next_action"] == 604800
             assert attrs["mqtt_next_action_at"] == message["next_action_at"]
             assert attrs["mqtt_session_matches"] is True
-            assert attrs["deadline_status"] == "deadline_not_provided"
+            assert attrs["deadline_status"] == "provided"
             assert attrs["required_action"] == "Place trub container"
             assert attrs["action_status"] == "Waiting for user action"
             assert attrs["waiting_since"] is None

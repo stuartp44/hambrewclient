@@ -17,7 +17,7 @@ realtime = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(realtime)
 
 
-def test_anonymized_capture_preserves_pending_action_without_inventing_deadline():
+def test_anonymized_capture_preserves_rest_action_and_uses_mqtt_deadline():
     fixture = Path(__file__).parent / "fixtures" / "pending_action_mqtt.json"
     capture = json.loads(fixture.read_text())
     rest_device = capture["rest_device"]
@@ -39,8 +39,8 @@ def test_anonymized_capture_preserves_pending_action_without_inventing_deadline(
         device = dict(rest_device)
         realtime.overlay_mqtt(device, SimpleNamespace(**message))
         assert device["user_action"] == 30
-        assert device["process_estimate_remaining"] is None
-        assert "process_estimate_remaining_seconds" not in device
+        assert device["process_estimate_remaining"] == message["next_action_at"]
+        assert device["process_estimate_remaining_seconds"] == 604800
 
     assert timestamps[1] - timestamps[0] == timedelta(seconds=29.020)
     assert deadlines[1] - deadlines[0] == timestamps[1] - timestamps[0]
@@ -116,7 +116,7 @@ def test_user_action_zero_applies_when_rest_is_empty_or_zero():
     assert device["user_action"] == 0
 
 
-def test_pending_rest_action_keeps_its_deadline_without_mqtt_action_context():
+def test_pending_rest_action_does_not_suppress_mqtt_countdown():
     from datetime import datetime, timezone
 
     deadline = datetime(2026, 10, 18, 8, 54, tzinfo=timezone.utc)
@@ -132,8 +132,8 @@ def test_pending_rest_action_keeps_its_deadline_without_mqtt_action_context():
             ),
         )
         assert device["user_action"] == 30
-        assert device["process_estimate_remaining"] == deadline
-        assert "process_estimate_remaining_seconds" not in device
+        assert device["process_estimate_remaining"] == datetime(2026, 10, 25, tzinfo=timezone.utc)
+        assert device["process_estimate_remaining_seconds"] == 604800
         assert device["current_temp"] == 18.1
 
 
@@ -147,6 +147,30 @@ def test_mqtt_action_with_context_can_update_rest_deadline():
     )
     assert device["process_estimate_remaining"] == deadline
     assert device["process_estimate_remaining_seconds"] == 60
+
+
+def test_pending_action_uses_rest_deadline_when_mqtt_omits_countdown():
+    deadline = datetime(2025, 1, 1).astimezone()
+    device = {"user_action": 30, "process_estimate_remaining": deadline}
+    realtime.overlay_mqtt(device, _telemetry(user_action=0))
+    assert device["user_action"] == 30
+    assert device["process_estimate_remaining"] == deadline
+
+
+def test_mismatched_session_cannot_replace_rest_action_or_deadline():
+    deadline = datetime(2025, 1, 1).astimezone()
+    device = {"user_action": 30, "process_estimate_remaining": deadline}
+    realtime.overlay_mqtt(
+        device,
+        _telemetry(
+            user_action=0, next_action_at=datetime(2099, 1, 1).astimezone(),
+            seconds_until_next_action=604800,
+        ),
+        include_session=False,
+    )
+    assert device["user_action"] == 30
+    assert device["process_estimate_remaining"] == deadline
+    assert "process_estimate_remaining_seconds" not in device
 
 
 def test_process_phase_is_mapped_to_device():

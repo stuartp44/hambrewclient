@@ -86,7 +86,7 @@ After adding the integration, you can configure additional options:
 - **Real-time discovery interval**: How often to refresh discovery and fallback data from REST while MQTT drives live telemetry (default: 300 seconds)
 - MQTT-backed sensors report `Unavailable` until fresh telemetry arrives from that device. If telemetry is arriving but an individual field is missing, that sensor reports `Unknown`.
 - The integration requests frequent device logs automatically and re-requests them after five seconds without incoming telemetry. Opening the MiniBrew portal or iOS app should not be necessary to start the stream; offline devices still cannot provide live data.
-- REST refreshes supplement discovery with device-status fields, including pending user actions and their estimated deadlines. When MQTT reports no action but REST reports a pending action, both the REST action and its deadline are retained; a background process countdown does not replace that deadline. Clearing the REST action allows the MQTT countdown to take over again.
+- REST refreshes supplement discovery with device-status fields, including pending user actions and their estimated deadlines. When MQTT reports no action but REST reports a pending action, the REST action is retained. Independently, the live MQTT countdown supplies `Next Action`; a pending REST action does not suppress it. REST provides the timestamp fallback when MQTT omits it.
 
 To access options:
 1. Go to **Settings** → **Devices & Services**
@@ -103,7 +103,7 @@ To access options:
 - REST controls MQTT startup and retries. A device must be explicitly online **and** report a known non-idle `process_type`: brewing, fermentation, serving, or cleaning (including acid cleaning). Online-but-idle devices, missing/unknown process types, and a session ID alone do not enable MQTT. A failed REST overview refresh pauses MQTT too. When no eligible devices remain, the connection is stopped and retries are cancelled. A successful REST refresh reporting an eligible device resumes MQTT; only eligible devices are subscribed. With multiple devices, the shared broker connection can remain active for an eligible device while another device is idle/offline. Process starts and stops are discovered on the configured REST discovery interval (default: 300 seconds). Cloud Connection and Online Since still reflect device connectivity, even while MQTT is intentionally paused for an idle device.
 - MQTT-only readings (process phase, Peltier power/mode, fan duty, controller temperature, and button) require device-specific telemetry received within the last **60 seconds** and an active MQTT connection. Cached telemetry is discarded on disconnection and expires after 60 seconds of silence, independently of REST polling.
 - **Online Since** stays fixed throughout the current observed online period, becomes `Unavailable` when connectivity is lost, and restarts on reconnection. If Home Assistant starts while a device is already online, this is the time it first observed the device online, not the device's actual connection time. The entity's unique ID is unchanged.
-- **Next Action** follows the current reported deadline, rounded to the minute, including overdue deadlines. It does not pin old timestamps across session changes. Explicit MQTT action `0` clears a previous action, missing action fields do not overwrite valid cloud data, and telemetry carrying a different session ID cannot restore an old session's reminders. Cleaning/setup actions without a brew session remain supported.
+- **Next Action** follows the current reported deadline, rounded to the minute, including overdue deadlines. It does not pin old timestamps across session changes. MQTT action `0` does not clear a pending REST action; a REST refresh clears that prompt. Missing MQTT fields do not overwrite valid cloud data, and telemetry carrying a different session ID cannot restore an old session's reminders. Cleaning/setup actions without a brew session remain supported.
 - An explicit REST session value, including `session_id: null`, takes precedence over cached session metadata. A session lookup completing after a reset cannot restore the ended session's per-device start time. Process phase `None` alone is not treated as proof of session completion; the portal's idle response explicitly reports `process_type: 0`, `stage: "Idle"`, and `session_id: null`.
 
 ## Requirements
@@ -153,7 +153,10 @@ logger:
 ### Action required but Next Action is Unknown
 
 `Next Action` is a timestamp, not the description of the required action.
-MiniBrew can report a pending action without providing its deadline.
+MiniBrew can report a pending action without providing a REST deadline. The MQTT
+countdown is used independently when available, even if its action field is zero
+and REST reports a pending instruction. `Next Action` remains a timestamp sensor;
+it is unknown only when neither applicable source supplies a usable timestamp.
 `Required Action` shows the reconciled prompt (for example, `Place trub container`),
 `No action required` when explicitly cleared, or `Unknown` when no action data is
 available. Unrecognized action codes are displayed explicitly rather than guessed.
@@ -181,8 +184,10 @@ demonstrates this case:
 - MQTT reports the same session and process state, but action `0` (undefined).
 - Two MQTT messages 29.020 seconds apart both report `604800` seconds (seven days)
   until the next action. The calculated timestamp advances rather than counting down.
-- The integration retains the REST action and leaves the deadline unknown rather
-  than presenting that moving timestamp as the pending action's deadline.
+- The integration retains the REST action and uses the MQTT timestamp for
+  `Next Action`. The current instruction and next-action estimate are independent;
+  the estimate is not rejected merely because the countdown remains constant
+  while the device waits.
 
 The excerpt contains only selected decoded fields from the first and last messages
 of a 30-message capture. Device and session identifiers and absolute timestamps are
