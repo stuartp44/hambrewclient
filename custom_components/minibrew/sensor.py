@@ -9,6 +9,7 @@ from homeassistant.helpers.entity_registry import RegistryEntryDisabler
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from pymbrewclient import Device, ProcessPhase, ProcessType, SensorType
+from pymbrewclient.mqtt.enums import UserAction
 
 from .const import (
     CONF_REALTIME_POLL_INTERVAL,
@@ -542,6 +543,94 @@ def _is_custom_fermentation_mode(device, *, current_stage=None):
     )
 
 
+def _required_action_description(device):
+    """Describe the reconciled action without inventing a prompt for unknown codes."""
+    state = _user_action_required_state(device)
+    if state is None:
+        return None
+    if state == "no_action_required":
+        return "No action required"
+    value = device.get("user_action")
+    try:
+        action = UserAction(int(value))
+    except (TypeError, ValueError):
+        if value is not None:
+            return f"Unknown action ({value})"
+        name = device.get("user_action_name")
+        return str(name).removeprefix("ACTION_").replace("_", " ").capitalize()
+    return action.name.removeprefix("ACTION_").replace("_", " ").capitalize()
+
+
+class _ActionDiagnosticsMixin:
+    """Expose source disagreements without changing the reconciled state."""
+
+    @property
+    def extra_state_attributes(self):
+        coordinator = self.coordinator
+        rest = coordinator.get_rest_device(self.device_id)
+        if not coordinator.last_update_success or not rest or rest.get("online") is not True:
+            rest = {}
+        mqtt = coordinator.get_telemetry(self.device_id)
+        device = self._get_latest_device() or {}
+        rest_action = rest.get("user_action")
+        mqtt_action = getattr(mqtt, "user_action", None)
+        rest_session, session_present = _session_id_from_device_dict(rest)
+        mqtt_session = getattr(mqtt, "session_id", None)
+        session_matches = (
+            not session_present or mqtt_session is None
+            or _coerce_session_id(mqtt_session) == rest_session
+        )
+        deadline = _next_action_state(device.get("process_estimate_remaining"))
+        action_state = _user_action_required_state(device)
+        waiting_since = None
+        if action_state == "action_required" and device.get("user_action") == rest_action:
+            # This is the reported state-entry time, not an inferred deadline.
+            waiting_since = _coerce_timestamp(rest.get("last_process_state_change"))
+        return {
+            "required_action": _required_action_description(device),
+            "action_status": (
+                "Waiting for user action" if action_state == "action_required"
+                else "No action required" if action_state == "no_action_required"
+                else None
+            ),
+            "waiting_since": waiting_since,
+            "rest_user_action": rest_action,
+            "mqtt_user_action": mqtt_action,
+            "rest_next_action_at": _coerce_timestamp(rest.get("process_estimate_remaining")),
+            "mqtt_next_action_at": _coerce_timestamp(getattr(mqtt, "next_action_at", None)),
+            "mqtt_seconds_until_next_action": getattr(mqtt, "seconds_until_next_action", None),
+            "mqtt_session_matches": session_matches if mqtt is not None else None,
+            "action_conflict": (
+                rest_action != mqtt_action
+                if session_matches and rest_action is not None and mqtt_action is not None
+                else None
+            ),
+            "deadline_status": (
+                "provided" if deadline is not None
+                else "deadline_not_provided"
+                if action_state == "action_required"
+                else "not_provided"
+            ),
+        }
+
+
+class _RequiredActionMixin(_ActionDiagnosticsMixin):
+    _attr_translation_key = "required_action"
+    _attr_icon = "mdi:clipboard-alert-outline"
+
+    @property
+    def name(self):
+        return "Required Action"
+
+    @property
+    def native_value(self):
+        return _required_action_description(self._get_latest_device())
+
+    @property
+    def unique_id(self):
+        return f"{self.device_id}_required_action"
+
+
 def _disable_legacy_esp_core_temp_entities(hass, config_entry):
     """Disable previously enabled ESP32 core temperature entities."""
     registry = er.async_get(hass)
@@ -637,6 +726,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     new_sensors.append(CraftSensorCurrentStageSensor(coordinator, device, state))
                     new_sensors.append(CraftProcessPhaseSensor(coordinator, device, state))
                     new_sensors.append(CraftUserActionRequiredSensor(coordinator, device, state))
+                    new_sensors.append(CraftRequiredActionSensor(coordinator, device, state))
                     new_sensors.append(CraftNextActionDateTimeSensor(coordinator, device, state))
                     new_sensors.append(CraftSessionIdSensor(coordinator, device, state))
                     new_sensors.append(CraftSessionStartedSensor(coordinator, device, state))
@@ -655,6 +745,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     new_sensors.append(KegLastTimeOnlineSensor(coordinator, device, state))
                     new_sensors.append(KegIsUpdatingSensor(coordinator, device, state))
                     new_sensors.append(KegActionRequiredSensor(coordinator, device, state))
+                    new_sensors.append(KegRequiredActionSensor(coordinator, device, state))
                     new_sensors.append(KegNextActionDateTimeSensor(coordinator, device, state))
                     new_sensors.append(KegSessionIdSensor(coordinator, device, state))
                     new_sensors.append(KegSessionStartedSensor(coordinator, device, state))
@@ -1277,7 +1368,11 @@ class CraftSensorIsUpdatingSensor(CraftSensor):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_is_updating"
 
-class CraftUserActionRequiredSensor(CraftSensor):
+class CraftRequiredActionSensor(_RequiredActionMixin, CraftSensor):
+    """Readable prompt for the Craft device's reconciled user action."""
+
+
+class CraftUserActionRequiredSensor(_ActionDiagnosticsMixin, CraftSensor):
     """Sensor for user action required status of the Craft device."""
 
     _attr_translation_key = "user_action_required"
@@ -1322,7 +1417,7 @@ class CraftUserActionRequiredSensor(CraftSensor):
         return f"{self.device_id}_user_action_required"
 
 
-class CraftNextActionDateTimeSensor(CraftSensor):
+class CraftNextActionDateTimeSensor(_ActionDiagnosticsMixin, CraftSensor):
     """Sensor for the actual timestamp of the next required action."""
 
     _attr_translation_key = "next_action_time_remaining"
@@ -1949,7 +2044,11 @@ class KegNeedsCleaningSensor(KegSensor):
         """Return the unique ID of the sensor."""
         return f"{self.device_id}_{self.name}"
 
-class KegActionRequiredSensor(KegSensor):
+class KegRequiredActionSensor(_RequiredActionMixin, KegSensor):
+    """Readable prompt for the Keg device's reconciled user action."""
+
+
+class KegActionRequiredSensor(_ActionDiagnosticsMixin, KegSensor):
     """Sensor for user action required status of the Keg device."""
 
     _attr_translation_key = "user_action_required"
@@ -1994,7 +2093,7 @@ class KegActionRequiredSensor(KegSensor):
         return f"{self.device_id}_{self.name}"
 
 
-class KegNextActionDateTimeSensor(KegSensor):
+class KegNextActionDateTimeSensor(_ActionDiagnosticsMixin, KegSensor):
     """Sensor for the actual timestamp of the next required action."""
 
     _attr_translation_key = "next_action_time_remaining"

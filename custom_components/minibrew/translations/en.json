@@ -81,6 +81,9 @@
           "unknown": "Unknown"
         }
       },
+      "required_action": {
+        "name": "Required action"
+      },
       "next_action_time_remaining": {
         "name": "Next action",
         "state": {

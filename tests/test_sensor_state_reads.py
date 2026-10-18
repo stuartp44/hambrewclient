@@ -63,6 +63,12 @@ class _Coordinator:
         pass
 
 
+class UserAction(IntEnum):
+    ACTION_UNDEFINED = 0
+    ACTION_ADD_INGREDIENT = 4
+    ACTION_PLACE_TRUB_CONTAINER = 30
+
+
 def _load_sensor_reads():
     realtime_spec = importlib.util.spec_from_file_location(
         "state_read_realtime", _ROOT / "realtime.py"
@@ -78,6 +84,7 @@ def _load_sensor_reads():
         "_next_action_state",
         "_display_option",
         "_user_action_required_state",
+        "_required_action_description",
         "_session_id_from_device_dict",
         "_overlay_mqtt",
         "_current_stage_group",
@@ -124,6 +131,7 @@ def _load_sensor_reads():
         "ProcessPhase": ProcessPhase,
         "ProcessType": ProcessType,
         "SensorType": SensorType,
+        "UserAction": UserAction,
         "SensorDeviceClass": SimpleNamespace(ENUM="enum", TIMESTAMP="timestamp"),
         "SensorStateClass": SimpleNamespace(MEASUREMENT="measurement"),
         "EntityCategory": SimpleNamespace(DIAGNOSTIC="diagnostic"),
@@ -436,6 +444,11 @@ def test_anonymized_capture_reports_required_action_with_unknown_deadline(action
     )
     action = _entity(action_class, coordinator, serial, "fermenting")
     next_action = _entity(time_class, coordinator, serial, "fermenting")
+    prompt_class = (
+        "CraftRequiredActionSensor" if action_class.startswith("Craft")
+        else "KegRequiredActionSensor"
+    )
+    prompt = _entity(prompt_class, coordinator, serial, "fermenting")
     for raw in capture["mqtt_messages"]:
         message = dict(raw)
         message["next_action_at"] = sensor._coerce_timestamp(message["next_action_at"])
@@ -444,6 +457,108 @@ def test_anonymized_capture_reports_required_action_with_unknown_deadline(action
         assert action.native_value == "Action required"
         assert next_action.available
         assert next_action.native_value is None
+        assert prompt.native_value == "Place trub container"
+        assert prompt.unique_id == f"{serial}_required_action"
+        for entity in (action, next_action, prompt):
+            attrs = entity.extra_state_attributes
+            assert attrs["rest_user_action"] == 30
+            assert attrs["mqtt_user_action"] == 0
+            assert attrs["action_conflict"] is True
+            assert attrs["rest_next_action_at"] is None
+            assert attrs["mqtt_seconds_until_next_action"] == 604800
+            assert attrs["mqtt_next_action_at"] == message["next_action_at"]
+            assert attrs["mqtt_session_matches"] is True
+            assert attrs["deadline_status"] == "deadline_not_provided"
+            assert attrs["required_action"] == "Place trub container"
+            assert attrs["action_status"] == "Waiting for user action"
+            assert attrs["waiting_since"] is None
+
+
+@pytest.mark.parametrize(
+    ("device", "expected"),
+    [
+        (None, None),
+        ({}, None),
+        ({"user_action": 0}, "No action required"),
+        ({"user_action": 30}, "Place trub container"),
+        ({"user_action": 4}, "Add ingredient"),
+        ({"user_action": "30"}, "Place trub container"),
+        ({"user_action": 999}, "Unknown action (999)"),
+        ({"user_action_name": "ACTION_PLACE_TRUB_CONTAINER"}, "Place trub container"),
+    ],
+)
+def test_required_action_description(device, expected):
+    assert sensor._required_action_description(device) == expected
+
+
+@pytest.mark.parametrize("prefix", ["Craft", "Keg"])
+def test_action_diagnostics_do_not_reuse_failed_rest_or_previous_session(prefix):
+    device = {
+        "serial_number": "example-keg", "online": True, "user_action": 30,
+        "active_session": 100,
+    }
+    telemetry = SimpleNamespace(user_action=4, session_id=99)
+    coordinator = _coordinator(
+        {"fermenting": [device]}, telemetry={"example-keg": telemetry}
+    )
+    coordinator._session_created_by_id[100] = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    entity = _entity(f"{prefix}RequiredActionSensor", coordinator, "example-keg", "fermenting")
+    assert entity.native_value == "Place trub container"
+    assert entity.extra_state_attributes["mqtt_session_matches"] is False
+    assert entity.extra_state_attributes["action_conflict"] is None
+    coordinator.last_update_success = False
+    assert entity.native_value == "Add ingredient"
+    assert entity.extra_state_attributes["rest_user_action"] is None
+    assert entity.extra_state_attributes["action_conflict"] is None
+
+
+@pytest.mark.parametrize("prefix", ["Craft", "Keg"])
+def test_required_action_clears_on_rest_refresh_and_mqtt_deadline_resumes(prefix):
+    serial = "example-keg"
+    deadline = datetime(2025, 1, 8, tzinfo=timezone.utc)
+    entered_state = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    device = {
+        "serial_number": serial, "online": True, "user_action": 30,
+        "last_process_state_change": entered_state,
+    }
+    coordinator = _coordinator(
+        {"fermenting": [device]},
+        telemetry={serial: SimpleNamespace(user_action=0, next_action_at=deadline)},
+    )
+    entity = _entity(f"{prefix}RequiredActionSensor", coordinator, serial, "fermenting")
+    assert entity.native_value == "Place trub container"
+    assert entity.extra_state_attributes["action_status"] == "Waiting for user action"
+    assert entity.extra_state_attributes["waiting_since"] == entered_state
+    sensor._merge_device_status_from_devices(
+        coordinator.data, [{"serial_number": serial, "user_action": 0}]
+    )
+    assert entity.native_value == "No action required"
+    assert entity.extra_state_attributes["action_status"] == "No action required"
+    assert entity.extra_state_attributes["waiting_since"] is None
+    assert entity.extra_state_attributes["action_conflict"] is False
+    assert entity.extra_state_attributes["deadline_status"] == "provided"
+    coordinator.realtime.get_telemetry = lambda serial: None
+    assert entity.extra_state_attributes["mqtt_user_action"] is None
+    assert entity.extra_state_attributes["mqtt_session_matches"] is None
+
+
+@pytest.mark.parametrize("prefix", ["Craft", "Keg"])
+@pytest.mark.parametrize("rest_ok", [False, True])
+def test_new_mqtt_action_does_not_inherit_previous_rest_wait_time(prefix, rest_ok):
+    serial = "example-keg"
+    device = {
+        "serial_number": serial, "online": True, "user_action": 30,
+        "last_process_state_change": "2025-01-01T00:00:00Z",
+    }
+    coordinator = _coordinator(
+        {"fermenting": [device]},
+        telemetry={serial: SimpleNamespace(user_action=4)},
+    )
+    coordinator.last_update_success = rest_ok
+    entity = _entity(f"{prefix}RequiredActionSensor", coordinator, serial, "fermenting")
+    assert entity.native_value == "Add ingredient"
+    assert entity.extra_state_attributes["action_status"] == "Waiting for user action"
+    assert entity.extra_state_attributes["waiting_since"] is None
 
 
 def test_coordinator_refresh_merges_device_status_before_publishing_overview():

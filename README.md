@@ -23,6 +23,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **User Action Required** - Notifications for required user actions
+- **Required Action** - Readable prompt such as `Place trub container`
 - **Next Action** - Timestamp for the next required user action
 - **Session ID** - Active brew session identifier (diagnostic)
 - **Brew Session Started** - Session start timestamp from MiniBrew session metadata (diagnostic)
@@ -38,6 +39,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 - **Is Updating** - Firmware update status
 - **Needs Cleaning** - Cleaning reminder indicator
 - **Action Required** - Notifications for required user actions
+- **Required Action** - Readable prompt such as `Place trub container`
 - **Next Action** - Timestamp for the next required user action
 - **Session ID** - Active brew session identifier (diagnostic)
 - **Brew Session Started** - Session start timestamp from MiniBrew session metadata (diagnostic)
@@ -152,6 +154,25 @@ logger:
 
 `Next Action` is a timestamp, not the description of the required action.
 MiniBrew can report a pending action without providing its deadline.
+`Required Action` shows the reconciled prompt (for example, `Place trub container`),
+`No action required` when explicitly cleared, or `Unknown` when no action data is
+available. Unrecognized action codes are displayed explicitly rather than guessed.
+
+The action sensors and `Next Action` expose diagnostic attributes:
+`rest_user_action`, `mqtt_user_action`, `rest_next_action_at`,
+`mqtt_next_action_at`, `mqtt_seconds_until_next_action`,
+`mqtt_session_matches`, `action_conflict`, and `deadline_status`.
+`deadline_status: deadline_not_provided` explains why a pending action has an
+unknown timestamp. Raw MQTT values remain visible for diagnosis even if excluded
+from reconciliation; a different session is flagged and is not compared as an
+action conflict. Failed/offline REST data is not presented as current.
+These attributes explain source discrepancies; they do not change the MQTT
+process phase or infer a deadline from the process state.
+The same sensors also expose `required_action` and `action_status` (for example,
+`Place trub container` and `Waiting for user action`). `waiting_since` is the
+REST-reported process-state entry time, included only while the pending action
+matches the current REST action. It is not a due date, is cleared when the action
+clears or changes, and remains empty when no trustworthy time is available.
 
 The [anonymized live-capture excerpt](tests/fixtures/pending_action_mqtt.json)
 demonstrates this case:
