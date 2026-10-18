@@ -119,6 +119,21 @@ This integration uses the [pymbrewclient](https://github.com/stuartp44/pymbrewcl
 
 ## Usage
 
+### Translations and compatibility
+
+Sensor display names are supplied by Home Assistant's entity translations.
+Enum display labels (including required actions and process phases) are translated
+using the existing stored English state values as keys. Stored states, unique IDs,
+and existing entity IDs are unchanged, so existing automations keep working.
+User-customized entity names are not overwritten.
+
+English is currently the only bundled language; additional languages can translate
+the same keys without changing integration code. Recipe/beer names and other
+server-provided free text remain source data, not translation keys. Unknown future
+action codes retain their existing explicit `Unknown action (<code>)` fallback.
+Diagnostic attribute keys and values remain stable for automation compatibility;
+they are not localized prose.
+
 Once configured, your MiniBrew devices will appear as separate devices in Home Assistant with all associated sensors. You can:
 
 - View all sensors in the Devices page

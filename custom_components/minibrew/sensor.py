@@ -617,10 +617,21 @@ class _ActionDiagnosticsMixin:
 class _RequiredActionMixin(_ActionDiagnosticsMixin):
     _attr_translation_key = "required_action"
     _attr_icon = "mdi:clipboard-alert-outline"
+    _attr_device_class = SensorDeviceClass.ENUM
 
     @property
-    def name(self):
-        return "Required Action"
+    def options(self):
+        """Keep existing action states while allowing frontend translations."""
+        options = ["No action required"] + [
+            action.name.removeprefix("ACTION_").replace("_", " ").capitalize()
+            for action in UserAction if action.value > 0
+        ]
+        value = self.native_value
+        if value is not None and value not in options:
+            options.append(value)
+        return options
+
+    _legacy_name = 'Required Action'
 
     @property
     def native_value(self):
@@ -1078,6 +1089,8 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
 class CraftSensor(SensorEntity):
     """Base class for MiniBrew sensors."""
 
+    _attr_has_entity_name = True
+
     _data_source = "device"
 
     def __init__(self, coordinator, device: Device, state: str):
@@ -1098,7 +1111,7 @@ class CraftSensor(SensorEntity):
     @property
     def unique_id(self):
         """Return a unique ID for the sensor."""
-        return f"{self.device.serial_number}_{self.name}"
+        return f"{self.device.serial_number}_{self._legacy_name}"
 
     @property
     def available(self):
@@ -1127,12 +1140,7 @@ class CraftSensorCurrentTemperatureSensor(CraftSensor):
 
     _attr_translation_key = "current_temperature"
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Current Temperature"
+    _legacy_name = 'Current Temperature'
 
     @property
     
@@ -1163,12 +1171,7 @@ class CraftSensorTargetTemperatureSensor(CraftSensor):
 
     _attr_translation_key = "target_temperature"
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Target Temperature"
+    _legacy_name = 'Target Temperature'
 
     @property
     
@@ -1199,10 +1202,7 @@ class CraftBeerStyleSensor(CraftSensor):
     _data_source = "rest"
 
     
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Beer Style"
+    _legacy_name = 'Beer Style'
 
     
     @property
@@ -1238,10 +1238,7 @@ class CraftBeerNameSensor(CraftSensor):
     _data_source = "rest"
 
     
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Beer Name"
+    _legacy_name = 'Beer Name'
 
     
     @property
@@ -1280,12 +1277,7 @@ class CraftSensorOnlineStatusSensor(CraftSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _CLOUD_CONNECTION_OPTIONS
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Cloud Connection"
+    _legacy_name = 'Cloud Connection'
 
     @property
     
@@ -1317,10 +1309,7 @@ class CraftLastTimeOnlineSensor(CraftSensor):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Online Since"
+    _legacy_name = 'Online Since'
 
     @property
     def native_value(self):
@@ -1346,12 +1335,7 @@ class CraftSensorIsUpdatingSensor(CraftSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _UPDATE_STATUS_OPTIONS
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Update Status"
+    _legacy_name = 'Update Status'
 
     @property
     
@@ -1390,12 +1374,7 @@ class CraftUserActionRequiredSensor(_ActionDiagnosticsMixin, CraftSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _USER_ACTION_REQUIRED_OPTIONS
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "User Action Required"
+    _legacy_name = 'User Action Required'
 
     @property
     
@@ -1434,10 +1413,7 @@ class CraftNextActionDateTimeSensor(_ActionDiagnosticsMixin, CraftSensor):
     _attr_translation_key = "next_action_time_remaining"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Next Action"
+    _legacy_name = 'Next Action'
 
     @property
     def native_value(self):
@@ -1476,10 +1452,7 @@ class CraftSessionIdSensor(CraftSensor):
     _data_source = "rest"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Session ID"
+    _legacy_name = 'Session ID'
 
     @property
     def native_value(self):
@@ -1509,10 +1482,7 @@ class CraftSessionStartedSensor(CraftSensor):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Brew Session Started"
+    _legacy_name = 'Brew Session Started'
 
     @property
     def native_value(self):
@@ -1553,12 +1523,7 @@ class CraftSensorCurrentStageSensor(CraftSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _CURRENT_STAGE_OPTIONS
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Current Stage"
+    _legacy_name = 'Current Stage'
 
     @property
     
@@ -1588,10 +1553,7 @@ class CraftProcessPhaseSensor(CraftSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _PROCESS_PHASE_OPTIONS
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Process Phase"
+    _legacy_name = 'Process Phase'
 
     @property
     def native_value(self):
@@ -1617,12 +1579,7 @@ class CraftSensorNeedsCleaningSensor(CraftSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _NEEDS_CLEANING_OPTIONS
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Needs Cleaning"
+    _legacy_name = 'Needs Cleaning'
 
     @property
     
@@ -1652,6 +1609,8 @@ class CraftSensorNeedsCleaningSensor(CraftSensor):
 class KegSensor(SensorEntity):
     """Base class for Keg sensors."""
 
+    _attr_has_entity_name = True
+
     _data_source = "device"
 
     def __init__(self, coordinator, device: Device, state: str):
@@ -1672,7 +1631,7 @@ class KegSensor(SensorEntity):
     @property
     def unique_id(self):
         """Return a unique ID for the sensor."""
-        return f"{self.device_id}_{self.name}"
+        return f"{self.device_id}_{self._legacy_name}"
     
     @property
     def available(self):
@@ -1701,12 +1660,7 @@ class KegCurrentTemperatureSensor(KegSensor):
 
     _attr_translation_key = "temperature"
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Temperature"
+    _legacy_name = 'Temperature'
 
     @property
     
@@ -1729,19 +1683,14 @@ class KegCurrentTemperatureSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_{self.name}"
+        return f"{self.device_id}_{self._legacy_name}"
 
 class KegTargetTemperatureSensor(KegSensor):
     """Sensor for the target temperature of the Keg device."""
 
     _attr_translation_key = "target_temperature"
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Target Temperature"
+    _legacy_name = 'Target Temperature'
 
     @property
     
@@ -1764,7 +1713,7 @@ class KegTargetTemperatureSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_{self.name}"
+        return f"{self.device_id}_{self._legacy_name}"
 
 class KegBeerStyleSensor(KegSensor):
     """Sensor for the beer style of the Keg device."""
@@ -1772,12 +1721,7 @@ class KegBeerStyleSensor(KegSensor):
     _attr_translation_key = "beer_style"
     _data_source = "rest"
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Beer Style"
+    _legacy_name = 'Beer Style'
 
     @property
     
@@ -1803,7 +1747,7 @@ class KegBeerStyleSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_{self.name}"
+        return f"{self.device_id}_{self._legacy_name}"
 
 
 class KegBeerNameSensor(KegSensor):
@@ -1812,12 +1756,7 @@ class KegBeerNameSensor(KegSensor):
     _attr_translation_key = "beer_name"
     _data_source = "rest"
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Beer Name"
+    _legacy_name = 'Beer Name'
 
     @property
     
@@ -1843,7 +1782,7 @@ class KegBeerNameSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_{self.name}"
+        return f"{self.device_id}_{self._legacy_name}"
 
 
 class KegCurrentStageSensor(KegSensor):
@@ -1854,10 +1793,7 @@ class KegCurrentStageSensor(KegSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _CURRENT_STAGE_OPTIONS
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Current Stage"
+    _legacy_name = 'Current Stage'
 
     @property
     def native_value(self):
@@ -1886,10 +1822,7 @@ class KegProcessPhaseSensor(KegSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _PROCESS_PHASE_OPTIONS
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Process Phase"
+    _legacy_name = 'Process Phase'
 
     @property
     def native_value(self):
@@ -1915,12 +1848,7 @@ class KegOnlineStatusSensor(KegSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _CLOUD_CONNECTION_OPTIONS
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Cloud Connection"
+    _legacy_name = 'Cloud Connection'
 
     @property
     
@@ -1942,7 +1870,7 @@ class KegOnlineStatusSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_{self.name}"
+        return f"{self.device_id}_{self._legacy_name}"
 
 
 class KegLastTimeOnlineSensor(KegSensor):
@@ -1952,10 +1880,7 @@ class KegLastTimeOnlineSensor(KegSensor):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Online Since"
+    _legacy_name = 'Online Since'
 
     @property
     def native_value(self):
@@ -1981,12 +1906,7 @@ class KegIsUpdatingSensor(KegSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _UPDATE_STATUS_OPTIONS
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Update Status"
+    _legacy_name = 'Update Status'
 
     @property
     
@@ -2012,7 +1932,7 @@ class KegIsUpdatingSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_{self.name}"
+        return f"{self.device_id}_{self._legacy_name}"
 
 
 class KegNeedsCleaningSensor(KegSensor):
@@ -2023,12 +1943,7 @@ class KegNeedsCleaningSensor(KegSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _NEEDS_CLEANING_OPTIONS
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "Needs Cleaning"
+    _legacy_name = 'Needs Cleaning'
 
     @property
     
@@ -2053,7 +1968,7 @@ class KegNeedsCleaningSensor(KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_{self.name}"
+        return f"{self.device_id}_{self._legacy_name}"
 
 class KegRequiredActionSensor(_RequiredActionMixin, KegSensor):
     """Readable prompt for the Keg device's reconciled user action."""
@@ -2066,12 +1981,7 @@ class KegActionRequiredSensor(_ActionDiagnosticsMixin, KegSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _USER_ACTION_REQUIRED_OPTIONS
 
-    @property
-    
-    
-    def name(self):
-        """Return the name of the sensor."""
-        return "User Action Required"
+    _legacy_name = 'User Action Required'
 
     @property
     
@@ -2101,7 +2011,7 @@ class KegActionRequiredSensor(_ActionDiagnosticsMixin, KegSensor):
     @property
     def unique_id(self):
         """Return the unique ID of the sensor."""
-        return f"{self.device_id}_{self.name}"
+        return f"{self.device_id}_{self._legacy_name}"
 
 
 class KegNextActionDateTimeSensor(_ActionDiagnosticsMixin, KegSensor):
@@ -2110,10 +2020,7 @@ class KegNextActionDateTimeSensor(_ActionDiagnosticsMixin, KegSensor):
     _attr_translation_key = "next_action_time_remaining"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Next Action"
+    _legacy_name = 'Next Action'
 
     @property
     def native_value(self):
@@ -2151,10 +2058,7 @@ class KegSessionIdSensor(KegSensor):
     _data_source = "rest"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Session ID"
+    _legacy_name = 'Session ID'
 
     @property
     def native_value(self):
@@ -2184,10 +2088,7 @@ class KegSessionStartedSensor(KegSensor):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Brew Session Started"
+    _legacy_name = 'Brew Session Started'
 
     @property
     def native_value(self):
@@ -2232,10 +2133,7 @@ class CraftTempControlPowerSensor(CraftSensor):
     
     
     
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Peltier Power"
+    _legacy_name = 'Peltier Power'
 
     
     
@@ -2269,10 +2167,7 @@ class KegTempControlPowerSensor(KegSensor):
     
     
     
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Peltier Power"
+    _legacy_name = 'Peltier Power'
 
     
     
@@ -2306,10 +2201,7 @@ class CraftPeltierFanPowerSensor(CraftSensor):
     
     
     
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Fan Duty"
+    _legacy_name = 'Fan Duty'
 
     
     
@@ -2345,10 +2237,7 @@ class KegPeltierFanPowerSensor(KegSensor):
     
     
     
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Fan Duty"
+    _legacy_name = 'Fan Duty'
 
     
     
@@ -2385,10 +2274,7 @@ class CraftEspCoreTempSensor(CraftSensor):
     
     
     
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "ESP32 Core Temperature"
+    _legacy_name = 'ESP32 Core Temperature'
 
     
     
@@ -2424,10 +2310,7 @@ class KegEspCoreTempSensor(KegSensor):
     
     
     
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "ESP32 Core Temperature"
+    _legacy_name = 'ESP32 Core Temperature'
 
     
     
@@ -2459,10 +2342,7 @@ class CraftButtonSensor(CraftSensor):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Button"
+    _legacy_name = 'Button'
 
     
     @property
@@ -2494,10 +2374,7 @@ class KegButtonSensor(KegSensor):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Button"
+    _legacy_name = 'Button'
 
     
     @property
@@ -2528,10 +2405,7 @@ class CraftPeltierModeSensor(CraftSensor):
     _attr_options = _PELTIER_MODE_OPTIONS
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Peltier Mode"
+    _legacy_name = 'Peltier Mode'
 
     @property
     def native_value(self):
@@ -2558,10 +2432,7 @@ class KegPeltierModeSensor(KegSensor):
     _attr_options = _PELTIER_MODE_OPTIONS
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Peltier Mode"
+    _legacy_name = 'Peltier Mode'
 
     @property
     def native_value(self):

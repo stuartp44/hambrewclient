@@ -491,6 +491,46 @@ def test_required_action_description(device, expected):
     assert sensor._required_action_description(device) == expected
 
 
+@pytest.mark.parametrize("class_name", [
+    name for name, cls in vars(sensor).items()
+    if isinstance(cls, type) and name not in {"CraftSensor", "KegSensor"}
+    and issubclass(cls, (sensor.CraftSensor, sensor.KegSensor))
+])
+def test_sensor_names_are_owned_by_home_assistant_translation(class_name):
+    cls = getattr(sensor, class_name)
+    assert cls._attr_has_entity_name is True
+    assert all("name" not in base.__dict__ for base in cls.__mro__ if base is not object)
+    strings = json.loads((_ROOT / "strings.json").read_text())
+    assert cls._attr_translation_key in strings["entity"]["sensor"]
+
+
+@pytest.mark.parametrize("prefix", ["Craft", "Keg"])
+def test_localized_display_name_cannot_change_legacy_unique_ids(prefix):
+    class_name = "CraftBeerNameSensor" if prefix == "Craft" else "KegBeerNameSensor"
+    cls = getattr(sensor, class_name)
+    entity = _entity(class_name, _coordinator({}), "example-keg", "serving")
+    before = entity.unique_id
+    translated = type("TranslatedSensor", (cls,), {"name": property(lambda self: "Translated name")})
+    entity.__class__ = translated
+    assert entity.unique_id == before
+    assert before == ("example-keg_beer_name" if prefix == "Craft" else "example-keg_Beer Name")
+
+
+def test_enum_translation_keys_match_preserved_state_values():
+    strings = json.loads((_ROOT / "strings.json").read_text())
+    english = json.loads((_ROOT / "translations" / "en.json").read_text())
+    assert strings == english
+    for name, cls in vars(sensor).items():
+        if not isinstance(cls, type) or not issubclass(cls, (sensor.CraftSensor, sensor.KegSensor)):
+            continue
+        if getattr(cls, "_attr_device_class", None) != "enum":
+            continue
+        entity = _entity(name, _coordinator({}), "example-keg", "serving")
+        options = entity.options if hasattr(type(entity), "options") else cls._attr_options
+        states = strings["entity"]["sensor"][cls._attr_translation_key]["state"]
+        assert set(options) <= set(states), name
+
+
 @pytest.mark.parametrize("prefix", ["Craft", "Keg"])
 def test_action_diagnostics_do_not_reuse_failed_rest_or_previous_session(prefix):
     device = {
