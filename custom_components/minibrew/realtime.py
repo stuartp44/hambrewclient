@@ -124,7 +124,7 @@ def overlay_mqtt(device: dict, telemetry, *, include_session=True) -> None:
         value = getattr(telemetry, attr, None)
         if value is not None:
             device[device_key] = value
-            if device_key in {"current_temp", "target_temp", "process_estimate_remaining"}:
+            if device_key in {"current_temp", "target_temp", "process_estimate_remaining", "process_type"}:
                 device.setdefault("_field_sources", {})[device_key] = "mqtt"
 
 

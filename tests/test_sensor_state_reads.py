@@ -157,6 +157,63 @@ def _load_sensor_reads():
 sensor = _load_sensor_reads()
 
 
+@pytest.mark.parametrize("class_name", ["CraftSensorCurrentStageSensor", "KegCurrentStageSensor"])
+@pytest.mark.parametrize("translation_file", ["strings.json", "translations/en.json"])
+def test_idle_group_does_not_claim_clean_readiness(class_name, translation_file):
+    coordinator = _coordinator({"brew_clean_idle": [{
+        "serial_number": "example-keg", "online": True,
+        "process_type": 0, "process_state": 0, "user_action": 38,
+    }]})
+    entity = _entity(class_name, coordinator, "example-keg", "brew_clean_idle")
+    assert entity.native_value == "idle"
+    translations = json.loads((_ROOT / translation_file).read_text())
+    states = translations["entity"]["sensor"]["current_stage"]["state"]
+    assert states[entity.native_value] == "Idle"
+    assert states["brew_acid_clean_idle"] == "Brewing, acid cleaning or idle"
+    assert coordinator.get_merged_device("example-keg", "brew_clean_idle")["user_action"] == 38
+
+
+@pytest.mark.parametrize("class_name", ["CraftSensorCurrentStageSensor", "KegCurrentStageSensor"])
+@pytest.mark.parametrize(("code", "expected"), [
+    (0, "idle"), (1, "brewing"), (2, "cleaning"), (3, "cleaning"),
+    (4, "fermenting"), (5, "serving"), (6, "acid_cleaning"),
+    (None, "brew_clean_idle"), (999, "brew_clean_idle"),
+])
+def test_current_stage_uses_process_code_with_group_fallback(class_name, code, expected):
+    coordinator = _coordinator({"brew_clean_idle": [{
+        "serial_number": "example-keg", "online": True, "process_type": code,
+    }]})
+    entity = _entity(class_name, coordinator, "example-keg", "brew_clean_idle")
+    assert entity.native_value == expected
+    assert expected in entity._attr_options
+    assert entity.extra_state_attributes["data_source"] == "rest"
+
+
+@pytest.mark.parametrize("class_name", ["CraftSensorCurrentStageSensor", "KegCurrentStageSensor"])
+def test_current_stage_mqtt_priority_session_guard_and_disconnect(class_name):
+    serial = "example-keg"
+    rest = {"serial_number": serial, "online": True, "process_type": 4, "active_session": 100}
+    mqtt = SimpleNamespace(process_type=5, session_id=100)
+    coordinator = _coordinator({"fermenting": [rest]}, telemetry={serial: mqtt})
+    coordinator._session_created_by_id[100] = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    entity = _entity(class_name, coordinator, serial, "fermenting")
+    assert entity.native_value == "serving"
+    assert entity.extra_state_attributes["data_source"] == "mqtt"
+    mqtt.session_id = 200
+    assert entity.native_value == "fermenting"
+    assert entity.extra_state_attributes["data_source"] == "rest"
+    coordinator.realtime.get_telemetry = lambda serial: None
+    assert entity.native_value == "fermenting"
+    coordinator.last_update_success = False
+    assert not entity.available
+    assert entity.native_value == "unknown"
+    assert entity.extra_state_attributes["data_source"] is None
+    coordinator.realtime.get_telemetry = lambda serial: SimpleNamespace(process_type=0)
+    assert entity.available
+    assert entity.native_value == "idle"
+    assert entity.extra_state_attributes["data_source"] == "mqtt"
+
+
 def test_manifest_registers_client_logger_for_home_assistant_debug_logging():
     manifest = json.loads((_ROOT / "manifest.json").read_text())
     assert "pymbrewclient" in manifest["loggers"]
@@ -940,9 +997,9 @@ _SENSOR_CLASSES = [
 ]
 _REST_SENSORS = {
     "CraftBeerStyleSensor", "CraftBeerNameSensor", "CraftSessionIdSensor",
-    "CraftSessionStartedSensor", "CraftSensorCurrentStageSensor",
+    "CraftSessionStartedSensor",
     "KegBeerStyleSensor", "KegBeerNameSensor", "KegSessionIdSensor",
-    "KegSessionStartedSensor", "KegCurrentStageSensor",
+    "KegSessionStartedSensor",
 }
 _CONNECTION_SENSORS = {"CraftSensorOnlineStatusSensor", "KegOnlineStatusSensor"}
 _REST_DEVICE_SENSORS = {
@@ -982,7 +1039,7 @@ def test_every_sensor_uses_its_required_source(class_name, rest_ok, online, mqtt
     entity = _entity(class_name, coordinator, "serial-1", "serving")
     if class_name in _REST_SENSORS:
         expected = rest_ok
-    elif class_name in _CONNECTION_SENSORS:
+    elif class_name in _CONNECTION_SENSORS | {"CraftSensorCurrentStageSensor", "KegCurrentStageSensor"}:
         expected = rest_ok or mqtt_ok
     elif class_name in _REST_DEVICE_SENSORS:
         expected = rest_ok and online is True

@@ -48,6 +48,10 @@ _PELTIER_MODE_OPTIONS = [
 ]
 
 _CURRENT_STAGE_OPTIONS = [
+    'idle',
+    'brewing',
+    'cleaning',
+    'acid_cleaning',
     'brew_clean_idle',
     'fermenting',
     'serving',
@@ -469,6 +473,16 @@ _CURRENT_STAGE_LABELS = {
     "unknown": 'unknown',
 }
 
+_PROCESS_TYPE_STAGES = {
+    ProcessType.PROC_IDLE: "idle",
+    ProcessType.PROC_BREWING: "brewing",
+    ProcessType.PROC_CLEAN_MINIBREW: "cleaning",
+    ProcessType.PROC_CLEAN_KEG: "cleaning",
+    ProcessType.PROC_FERMENTATION: "fermenting",
+    ProcessType.PROC_SERVING: "serving",
+    ProcessType.PROC_ACID_CLEAN_MINIBREW: "acid_cleaning",
+}
+
 
 _CLOUD_CONNECTION_LABELS = {
     "online": 'online',
@@ -580,6 +594,30 @@ class _SourceDiagnosticsMixin:
             "data_source": source,
             "rest_last_successful_poll": polled_at.isoformat() if polled_at else None,
         }
+
+
+class _CurrentStageMixin(_SourceDiagnosticsMixin):
+    """Resolve process codes before falling back to broad overview groups."""
+
+    _source_field = "process_type"
+    _data_source = "connection"
+
+    @property
+    def native_value(self):
+        device = self._get_latest_device() or {}
+        stage = _PROCESS_TYPE_STAGES.get(device.get("process_type"))
+        return stage or _current_stage_group(self.coordinator, self.device_id)
+
+    @property
+    def extra_state_attributes(self):
+        attributes = super().extra_state_attributes
+        device = self._get_latest_device() or {}
+        if device.get("process_type") not in _PROCESS_TYPE_STAGES:
+            attributes["data_source"] = (
+                "rest" if _current_stage_group(self.coordinator, self.device_id) != "unknown"
+                else None
+            )
+        return attributes
 
 
 class _ActionDiagnosticsMixin(_SourceDiagnosticsMixin):
@@ -956,7 +994,7 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
                 merged.pop(key, None)
         merged["_field_sources"] = {
             key: "rest"
-            for key in ("current_temp", "target_temp", "process_estimate_remaining")
+            for key in ("current_temp", "target_temp", "process_estimate_remaining", "process_type")
             if merged.get(key) is not None
         }
         rest_session, session_present = _session_id_from_device_dict(merged)
@@ -1567,25 +1605,14 @@ class CraftSessionStartedSensor(CraftSensor):
         return f"{self.device_id}_session_started"
 
 
-class CraftSensorCurrentStageSensor(CraftSensor):
+class CraftSensorCurrentStageSensor(_CurrentStageMixin, CraftSensor):
     """Sensor for the current stage of the Craft device."""
 
     _attr_translation_key = "current_stage"
-    _data_source = "rest"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _CURRENT_STAGE_OPTIONS
 
     _legacy_name = 'Current Stage'
-
-    @property
-    
-    
-    def native_value(self):
-        """Return a human-readable phase name based on the device's group."""
-        return _display_option(
-            _current_stage_group(self.coordinator, self.device_id),
-            _CURRENT_STAGE_LABELS,
-        )
 
     @property
     def icon(self):
@@ -1838,23 +1865,14 @@ class KegBeerNameSensor(KegSensor):
         return f"{self.device_id}_{self._legacy_name}"
 
 
-class KegCurrentStageSensor(KegSensor):
+class KegCurrentStageSensor(_CurrentStageMixin, KegSensor):
     """Sensor for the current stage of the Keg device."""
 
     _attr_translation_key = "current_stage"
-    _data_source = "rest"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = _CURRENT_STAGE_OPTIONS
 
     _legacy_name = 'Current Stage'
-
-    @property
-    def native_value(self):
-        """Return the current high-level stage from the overview group."""
-        return _display_option(
-            _current_stage_group(self.coordinator, self.device_id),
-            _CURRENT_STAGE_LABELS,
-        )
 
     @property
     def icon(self):
