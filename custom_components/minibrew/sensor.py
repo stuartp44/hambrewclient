@@ -21,66 +21,66 @@ from .realtime import MiniBrewRealtimeManager, overlay_mqtt
 _LOGGER = logging.getLogger(__name__)
 
 _USER_ACTION_REQUIRED_OPTIONS = [
-    "Action required",
-    "No action required",
-    "Unknown",
+    'action_required',
+    'no_action_required',
+    'unknown',
 ]
 
 _CLOUD_CONNECTION_OPTIONS = [
-    "Online",
-    "Offline",
+    'online',
+    'offline',
 ]
 
 _UPDATE_STATUS_OPTIONS = [
-    "Updating",
-    "Not updating",
+    'updating',
+    'not_updating',
 ]
 
 _BUTTON_OPTIONS = [
-    "On",
-    "Off",
+    'on',
+    'off',
 ]
 
 _PELTIER_MODE_OPTIONS = [
-    "Cooling",
-    "Warming",
-    "Idle",
+    'cooling',
+    'warming',
+    'idle',
 ]
 
 _CURRENT_STAGE_OPTIONS = [
-    "Clean and ready to brew",
-    "Fermenting",
-    "Serving",
-    "Ready to clean",
-    "Unknown",
+    'brew_clean_idle',
+    'fermenting',
+    'serving',
+    'brew_acid_clean_idle',
+    'unknown',
 ]
 
 _NEEDS_CLEANING_OPTIONS = [
-    "Needs cleaning",
-    "Clean",
+    'needs_cleaning',
+    'clean',
 ]
 
 
 def _display_option(value, mapping):
-    """Return a human-friendly label for a raw sensor option."""
+    """Return the stable enum token for a raw sensor option."""
     if value is None:
         return None
     return mapping.get(value, value)
 
 
 def _build_process_phase_options() -> list[str]:
-    """Build stable display options from ProcessPhase enum names."""
+    """Build stable state tokens from ProcessPhase enum names."""
     options: list[str] = []
     for member in ProcessPhase:
         phase_name = member.name.lower()
         if phase_name == "phase_none":
-            label = "None"
+            label = 'none'
         else:
             for prefix in ("brew_", "ferm_", "serv_", "clean_mb_", "acid_clean_mb_"):
                 if phase_name.startswith(prefix):
                     phase_name = phase_name[len(prefix):]
                     break
-            label = phase_name.replace("_", " ").title()
+            label = phase_name
         if label not in options:
             options.append(label)
     return options
@@ -234,12 +234,12 @@ def _cloud_connection_state(coordinator, serial):
     device = coordinator.get_rest_device(serial)
     online = device.get("online") if device and coordinator.last_update_success else None
     if online is False:
-        return "Offline"
+        return 'offline'
     if coordinator.get_telemetry(serial) is not None:
-        return "Online"
+        return 'online'
     if not isinstance(online, bool):
         return None
-    return "Online" if online else "Offline"
+    return 'online' if online else 'offline'
 
 def _overlay_mqtt(device: dict, telemetry) -> None:
     """Overlay live MQTT telemetry onto a REST device dict, in place.
@@ -403,14 +403,14 @@ def _telemetry_temp_control_power(coordinator, serial):
 
 
 def _peltier_mode(power):
-    """Map signed Peltier power to a human-readable mode."""
+    """Map signed Peltier power to a mode token."""
     if power is None:
         return None
     if power < 0:
-        return "Cooling"
+        return 'cooling'
     if power > 0:
-        return "Warming"
-    return "Idle"
+        return 'warming'
+    return 'idle'
 
 
 def _button_state(value):
@@ -418,7 +418,7 @@ def _button_state(value):
     if value is None:
         return None
     try:
-        return "On" if float(value) >= 1.0 else "Off"
+        return 'on' if float(value) >= 1.0 else 'off'
     except (TypeError, ValueError):
         return None
 
@@ -435,7 +435,7 @@ def _current_stage_group(coordinator, device_id):
 
 
 def _process_phase_display(device):
-    """Return a readable ProcessPhase label from telemetry."""
+    """Return a ProcessPhase token from telemetry."""
     if not device:
         return None
 
@@ -449,54 +449,54 @@ def _process_phase_display(device):
         return None
 
     if phase_name == "phase_none":
-        return "None"
+        return 'none'
 
     for prefix in ("brew_", "ferm_", "serv_", "clean_mb_", "acid_clean_mb_"):
         if phase_name.startswith(prefix):
             phase_name = phase_name[len(prefix):]
             break
 
-    return phase_name.replace("_", " ").title()
+    return phase_name
 
 
 _CURRENT_STAGE_LABELS = {
-    "brew_clean_idle": "Clean and ready to brew",
-    "fermenting": "Fermenting",
-    "serving": "Serving",
-    "brew_acid_clean_idle": "Ready to clean",
-    "unknown": "Unknown",
+    "brew_clean_idle": 'brew_clean_idle',
+    "fermenting": 'fermenting',
+    "serving": 'serving',
+    "brew_acid_clean_idle": 'brew_acid_clean_idle',
+    "unknown": 'unknown',
 }
 
 
 _CLOUD_CONNECTION_LABELS = {
-    "online": "Online",
-    "offline": "Offline",
+    "online": 'online',
+    "offline": 'offline',
 }
 
 
 _UPDATE_STATUS_LABELS = {
-    "updating": "Updating",
-    "not_updating": "Not updating",
+    "updating": 'updating',
+    "not_updating": 'not_updating',
 }
 
 
 _USER_ACTION_REQUIRED_LABELS = {
-    "action_required": "Action required",
-    "no_action_required": "No action required",
-    "unknown": "Unknown",
+    "action_required": 'action_required',
+    "no_action_required": 'no_action_required',
+    "unknown": 'unknown',
 }
 
 
 _NEEDS_CLEANING_LABELS = {
-    "needs_cleaning": "Needs cleaning",
-    "clean": "Clean",
+    "needs_cleaning": 'needs_cleaning',
+    "clean": 'clean',
 }
 
 
 _PELTIER_MODE_LABELS = {
-    "cooling": "Cooling",
-    "warming": "Warming",
-    "idle": "Idle",
+    "cooling": 'cooling',
+    "warming": 'warming',
+    "idle": 'idle',
 }
 
 
@@ -549,16 +549,19 @@ def _required_action_description(device):
     if state is None:
         return None
     if state == "no_action_required":
-        return "No action required"
+        return 'no_action_required'
     value = device.get("user_action")
     try:
         action = UserAction(int(value))
     except (TypeError, ValueError):
         if value is not None:
-            return f"Unknown action ({value})"
+            return "unknown_action"
         name = device.get("user_action_name")
-        return str(name).removeprefix("ACTION_").replace("_", " ").capitalize()
-    return action.name.removeprefix("ACTION_").replace("_", " ").capitalize()
+        try:
+            action = UserAction[str(name).upper()]
+        except KeyError:
+            return "unknown_action"
+    return action.name.removeprefix("ACTION_").lower()
 
 
 class _ActionDiagnosticsMixin:
@@ -621,14 +624,11 @@ class _RequiredActionMixin(_ActionDiagnosticsMixin):
 
     @property
     def options(self):
-        """Keep existing action states while allowing frontend translations."""
-        options = ["No action required"] + [
-            action.name.removeprefix("ACTION_").replace("_", " ").capitalize()
+        """Return finite action tokens supported by frontend translations."""
+        options = ["no_action_required", "unknown_action"] + [
+            action.name.removeprefix("ACTION_").lower()
             for action in UserAction if action.value > 0
         ]
-        value = self.native_value
-        if value is not None and value not in options:
-            options.append(value)
         return options
 
     _legacy_name = 'Required Action'
@@ -876,7 +876,7 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
 
     def is_device_online(self, serial):
         """Require a positive cloud status or fresh device-specific telemetry."""
-        return _cloud_connection_state(self, serial) == "Online"
+        return _cloud_connection_state(self, serial) == 'online'
 
     def get_online_since(self, serial):
         """Return the start of this continuously observed online period."""
@@ -1345,7 +1345,7 @@ class CraftSensorIsUpdatingSensor(CraftSensor):
         device = self._get_latest_device()
         if not device or device.get("updating") is None:
             return None
-        return "Updating" if device.get("updating") else "Not updating"
+        return 'updating' if device.get("updating") else 'not_updating'
 
     
     @property
@@ -1397,7 +1397,7 @@ class CraftUserActionRequiredSensor(_ActionDiagnosticsMixin, CraftSensor):
         """Return the icon for the sensor."""
         if self.native_value is None:
             return "mdi:help-circle-outline"
-        if self.native_value == "Action required":
+        if self.native_value == 'action_required':
             return "mdi:alert"
         return "mdi:check-circle"
 
@@ -1589,7 +1589,7 @@ class CraftSensorNeedsCleaningSensor(CraftSensor):
         device = self._get_latest_device()
         if not device or device.get("needs_acid_cleaning") is None:
             return None
-        return "Needs cleaning" if device["needs_acid_cleaning"] else "Clean"
+        return 'needs_cleaning' if device["needs_acid_cleaning"] else 'clean'
 
     @property
     def entity_category(self):
@@ -1916,7 +1916,7 @@ class KegIsUpdatingSensor(KegSensor):
         device = self._get_latest_device()
         if not device or device.get("updating") is None:
             return None
-        return "Updating" if device.get("updating") else "Not updating"
+        return 'updating' if device.get("updating") else 'not_updating'
 
     
     @property
@@ -1953,7 +1953,7 @@ class KegNeedsCleaningSensor(KegSensor):
         device = self._get_latest_device()
         if not device or device.get("needs_acid_cleaning") is None:
             return None
-        return "Needs cleaning" if device["needs_acid_cleaning"] else "Clean"
+        return 'needs_cleaning' if device["needs_acid_cleaning"] else 'clean'
 
     @property
     def entity_category(self):
@@ -2004,7 +2004,7 @@ class KegActionRequiredSensor(_ActionDiagnosticsMixin, KegSensor):
         """Return the icon for the sensor."""
         if self.native_value is None:
             return "mdi:help-circle-outline"
-        if self.native_value == "Action required":
+        if self.native_value == 'action_required':
             return "mdi:alert"
         return "mdi:check-circle"
 

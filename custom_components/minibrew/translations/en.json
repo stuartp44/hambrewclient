@@ -59,8 +59,8 @@
       "cloud_connection": {
         "name": "Cloud connection",
         "state": {
-          "Online": "Online",
-          "Offline": "Offline"
+          "online": "Online",
+          "offline": "Offline"
         }
       },
       "last_time_online": {
@@ -69,88 +69,88 @@
       "update_status": {
         "name": "Update status",
         "state": {
-          "Updating": "Updating",
-          "Not updating": "Not updating"
+          "updating": "Updating",
+          "not_updating": "Not updating"
         }
       },
       "user_action_required": {
         "name": "User action required",
         "state": {
-          "Action required": "Action required",
-          "No action required": "No action required",
-          "Unknown": "Unknown"
+          "action_required": "Action required",
+          "no_action_required": "No action required",
+          "unknown": "Unknown"
         }
       },
       "required_action": {
         "name": "Required action",
         "state": {
-          "No action required": "No action required",
-          "Unknown action": "Unknown action",
-          "Add brew water": "Add brew water",
-          "Prepare cleaning": "Prepare cleaning",
-          "Check activity started": "Check activity started",
-          "Add ingredient": "Add ingredient",
-          "Remove ingredient": "Remove ingredient",
-          "Connect water": "Connect water",
-          "Place keg": "Place keg",
-          "Remove trub": "Remove trub",
-          "Check activity stopped": "Check activity stopped",
-          "Mount tap": "Mount tap",
-          "Remove keg": "Remove keg",
-          "Needs cleaning": "Needs cleaning",
-          "Brewing failed": "Brewing failed",
-          "Prepare rinsing": "Prepare rinsing",
-          "Add rinse water": "Add rinse water",
-          "Clean ballvalve": "Clean ballvalve",
-          "Empty keg": "Empty keg",
-          "Fill mash tun": "Fill mash tun",
-          "Fill carousel": "Fill carousel",
-          "Start brewing": "Start brewing",
-          "Manual sparge": "Manual sparge",
-          "Replace mash": "Replace mash",
-          "Place carrousel": "Place carrousel",
-          "Resume brewing": "Resume brewing",
-          "Prepare fermentation": "Prepare fermentation",
-          "Place airlock": "Place airlock",
-          "Remove airlock": "Remove airlock",
-          "Place trub container": "Place trub container",
-          "Connect pressurizer": "Connect pressurizer",
-          "Start cleaning": "Start cleaning",
-          "Fermentation failed": "Fermentation failed",
-          "Serving failed": "Serving failed",
-          "Clean minibrew failed": "Clean minibrew failed",
-          "Pair gravity sensor": "Pair gravity sensor",
-          "Finish cleaning": "Finish cleaning",
-          "Keg needs cleaning": "Keg needs cleaning",
-          "Check keg presence": "Check keg presence",
-          "Check ballvalve": "Check ballvalve",
-          "Check rinse connector": "Check rinse connector",
-          "Check inlet water": "Check inlet water",
-          "Check keg empty": "Check keg empty",
-          "Check rinse flow": "Check rinse flow",
-          "Check mash tun": "Check mash tun",
-          "Check carousel": "Check carousel",
-          "Check mash line flow": "Check mash line flow",
-          "Check boil line flow": "Check boil line flow",
-          "Check cip container": "Check cip container",
-          "Check cip lines": "Check cip lines",
-          "Check cleaning flow": "Check cleaning flow",
-          "Place correct keg": "Place correct keg",
-          "Place blow off": "Place blow off",
-          "Remove blow off": "Remove blow off",
-          "Check carousel jam": "Check carousel jam",
-          "Prepare acid cleaning": "Prepare acid cleaning",
-          "Clean cip filter": "Clean cip filter",
-          "Check acid cleaning flow": "Check acid cleaning flow",
-          "Acid clean minibrew failed": "Acid clean minibrew failed",
-          "Finish acid cleaning": "Finish acid cleaning",
-          "Brewing failed perform acid clean": "Brewing failed perform acid clean",
-          "Clean minibrew failed perform acid clean": "Clean minibrew failed perform acid clean",
-          "Needs acid cleaning": "Needs acid cleaning",
-          "Keg needs update": "Keg needs update",
-          "Check carbonation": "Check carbonation",
-          "Replace mash tun": "Replace mash tun",
-          "Max cooling duration elapsed": "Max cooling duration elapsed"
+          "no_action_required": "No action required",
+          "unknown_action": "Unknown action",
+          "add_brew_water": "Add brew water",
+          "prepare_cleaning": "Prepare cleaning",
+          "check_activity_started": "Check activity started",
+          "add_ingredient": "Add ingredient",
+          "remove_ingredient": "Remove ingredient",
+          "connect_water": "Connect water",
+          "place_keg": "Place keg",
+          "remove_trub": "Remove trub",
+          "check_activity_stopped": "Check activity stopped",
+          "mount_tap": "Mount tap",
+          "remove_keg": "Remove keg",
+          "needs_cleaning": "Needs cleaning",
+          "brewing_failed": "Brewing failed",
+          "prepare_rinsing": "Prepare rinsing",
+          "add_rinse_water": "Add rinse water",
+          "clean_ballvalve": "Clean ballvalve",
+          "empty_keg": "Empty keg",
+          "fill_mash_tun": "Fill mash tun",
+          "fill_carousel": "Fill carousel",
+          "start_brewing": "Start brewing",
+          "manual_sparge": "Manual sparge",
+          "replace_mash": "Replace mash",
+          "place_carrousel": "Place carrousel",
+          "resume_brewing": "Resume brewing",
+          "prepare_fermentation": "Prepare fermentation",
+          "place_airlock": "Place airlock",
+          "remove_airlock": "Remove airlock",
+          "place_trub_container": "Place trub container",
+          "connect_pressurizer": "Connect pressurizer",
+          "start_cleaning": "Start cleaning",
+          "fermentation_failed": "Fermentation failed",
+          "serving_failed": "Serving failed",
+          "clean_minibrew_failed": "Clean minibrew failed",
+          "pair_gravity_sensor": "Pair gravity sensor",
+          "finish_cleaning": "Finish cleaning",
+          "keg_needs_cleaning": "Keg needs cleaning",
+          "check_keg_presence": "Check keg presence",
+          "check_ballvalve": "Check ballvalve",
+          "check_rinse_connector": "Check rinse connector",
+          "check_inlet_water": "Check inlet water",
+          "check_keg_empty": "Check keg empty",
+          "check_rinse_flow": "Check rinse flow",
+          "check_mash_tun": "Check mash tun",
+          "check_carousel": "Check carousel",
+          "check_mash_line_flow": "Check mash line flow",
+          "check_boil_line_flow": "Check boil line flow",
+          "check_cip_container": "Check cip container",
+          "check_cip_lines": "Check cip lines",
+          "check_cleaning_flow": "Check cleaning flow",
+          "place_correct_keg": "Place correct keg",
+          "place_blow_off": "Place blow off",
+          "remove_blow_off": "Remove blow off",
+          "check_carousel_jam": "Check carousel jam",
+          "prepare_acid_cleaning": "Prepare acid cleaning",
+          "clean_cip_filter": "Clean cip filter",
+          "check_acid_cleaning_flow": "Check acid cleaning flow",
+          "acid_clean_minibrew_failed": "Acid clean minibrew failed",
+          "finish_acid_cleaning": "Finish acid cleaning",
+          "brewing_failed_perform_acid_clean": "Brewing failed perform acid clean",
+          "clean_minibrew_failed_perform_acid_clean": "Clean minibrew failed perform acid clean",
+          "needs_acid_cleaning": "Needs acid cleaning",
+          "keg_needs_update": "Keg needs update",
+          "check_carbonation": "Check carbonation",
+          "replace_mash_tun": "Replace mash tun",
+          "max_cooling_duration_elapsed": "Max cooling duration elapsed"
         }
       },
       "next_action_time_remaining": {
@@ -168,36 +168,36 @@
       "current_stage": {
         "name": "Current stage",
         "state": {
-          "Clean and ready to brew": "Clean and ready to brew",
-          "Fermenting": "Fermenting",
-          "Serving": "Serving",
-          "Ready to clean": "Ready to clean",
-          "Unknown": "Unknown"
+          "brew_clean_idle": "Clean and ready to brew",
+          "fermenting": "Fermenting",
+          "serving": "Serving",
+          "brew_acid_clean_idle": "Ready to clean",
+          "unknown": "Unknown"
         }
       },
       "process_phase": {
         "name": "Process phase",
         "state": {
-          "None": "None",
-          "Preparing": "Preparing",
-          "Mashing": "Mashing",
-          "Boiling": "Boiling",
-          "Chilling": "Chilling",
-          "Primary": "Primary",
-          "Secondary": "Secondary",
-          "Clarification": "Clarification",
-          "Carbonating": "Carbonating",
-          "Serving": "Serving",
-          "Cleaning": "Cleaning",
-          "Rinsing": "Rinsing",
-          "Soaking": "Soaking"
+          "none": "None",
+          "preparing": "Preparing",
+          "mashing": "Mashing",
+          "boiling": "Boiling",
+          "chilling": "Chilling",
+          "primary": "Primary",
+          "secondary": "Secondary",
+          "clarification": "Clarification",
+          "carbonating": "Carbonating",
+          "serving": "Serving",
+          "cleaning": "Cleaning",
+          "rinsing": "Rinsing",
+          "soaking": "Soaking"
         }
       },
       "needs_cleaning": {
         "name": "Needs cleaning",
         "state": {
-          "Needs cleaning": "Needs cleaning",
-          "Clean": "Clean"
+          "needs_cleaning": "Needs cleaning",
+          "clean": "Clean"
         }
       },
       "temperature": {
@@ -215,9 +215,9 @@
       "peltier_mode": {
         "name": "Peltier mode",
         "state": {
-          "Cooling": "Cooling",
-          "Warming": "Warming",
-          "Idle": "Idle"
+          "cooling": "Cooling",
+          "warming": "Warming",
+          "idle": "Idle"
         }
       },
       "peltier_fan_power": {
@@ -229,8 +229,8 @@
       "button": {
         "name": "Button",
         "state": {
-          "On": "On",
-          "Off": "Off"
+          "on": "On",
+          "off": "Off"
         }
       }
     }

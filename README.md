@@ -123,16 +123,42 @@ This integration uses the [pymbrewclient](https://github.com/stuartp44/pymbrewcl
 
 Sensor display names are supplied by Home Assistant's entity translations.
 Enum display labels (including required actions and process phases) are translated
-using the existing stored English state values as keys. Stored states, unique IDs,
-and existing entity IDs are unchanged, so existing automations keep working.
+using stable lowercase state tokens. Unique IDs and existing entity IDs are
+unchanged.
 User-customized entity names are not overwritten.
+
+**Breaking change:** automations, templates, and dashboards that compare raw enum
+states must use the new tokens, not the English display labels. Home Assistant
+continues to display translated human-readable labels.
+
+| Sensor | Previous raw state | New raw state |
+| --- | --- | --- |
+| User Action Required | `Action required` / `No action required` | `action_required` / `no_action_required` |
+| Required Action | `Place trub container` / `Add ingredient` | `place_trub_container` / `add_ingredient` |
+| Cloud Connection | `Online` / `Offline` | `online` / `offline` |
+| Update Status | `Updating` / `Not updating` | `updating` / `not_updating` |
+| Current Stage | `Clean and ready to brew` / `Ready to clean` | `brew_clean_idle` / `brew_acid_clean_idle` |
+| Current Stage | `Fermenting` / `Serving` | `fermenting` / `serving` |
+| Process Phase | `Primary` / `None` | `primary` / `none` |
+| Needs Cleaning | `Needs cleaning` / `Clean` | `needs_cleaning` / `clean` |
+| Peltier Mode | `Cooling` / `Warming` / `Idle` | `cooling` / `warming` / `idle` |
+| Button | `On` / `Off` | `on` / `off` |
+
+Other action and process-phase labels use their lowercase, underscore-separated
+equivalents. Update, for example,
+`is_state('sensor.keg_user_action_required', 'Action required')` to
+`is_state('sensor.keg_user_action_required', 'action_required')`.
+Temperature readings, timestamp sensors (including Next Action), and server-provided
+beer metadata are unchanged.
 
 English is currently the only bundled language; additional languages can translate
 the same keys without changing integration code. Recipe/beer names and other
 server-provided free text remain source data, not translation keys. Unknown future
-action codes retain their existing explicit `Unknown action (<code>)` fallback.
-Diagnostic attribute keys and values remain stable for automation compatibility;
-they are not localized prose.
+action codes use `unknown_action` (displayed as "Unknown action"); source codes
+remain available in `rest_user_action` and `mqtt_user_action` attributes.
+The `required_action` diagnostic attribute also uses the new action token.
+Other diagnostic attribute keys and values remain unchanged; they are not
+localized prose.
 
 Once configured, your MiniBrew devices will appear as separate devices in Home Assistant with all associated sensors. You can:
 
@@ -200,7 +226,7 @@ action conflict. Failed/offline REST data is not presented as current.
 These attributes explain source discrepancies; they do not change the MQTT
 process phase or infer a deadline from the process state.
 The same sensors also expose `required_action` and `action_status` (for example,
-`Place trub container` and `Waiting for user action`). `waiting_since` is the
+`place_trub_container` and `Waiting for user action`). `waiting_since` is the
 REST-reported process-state entry time, included only while the pending action
 matches the current REST action. It is not a due date, is cleared when the action
 clears or changes, and remains empty when no trustworthy time is available.

@@ -10,6 +10,7 @@ import dataclasses
 import importlib.util
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from enum import IntEnum
 from pathlib import Path
@@ -253,7 +254,7 @@ def test_lookup_does_not_convert_unrelated_devices(monkeypatch):
         ("KegBeerStyleSensor", " Stout ", "Test beer", None, "serving", "Stout"),
         ("CraftBeerStyleSensor", " ", "Test beer", None, "brew_clean_idle", None),
         ("KegBeerStyleSensor", None, "Custom Fermentation", None, "fermenting", "N/A"),
-        ("CraftBeerStyleSensor", "Unknown", "Unknown", 1, "fermenting", "N/A"),
+        ("CraftBeerStyleSensor", 'unknown', 'unknown', 1, "fermenting", "N/A"),
     ],
 )
 def test_beer_style_values_preserved(class_name, style, name, phase, group, expected):
@@ -403,7 +404,7 @@ def test_device_attention_survives_independent_mqtt_countdown(
     next_action = _entity(time_class, coordinator, serial, "fermenting")
     next_action._cached_value = None
 
-    assert action.native_value == "Action required"
+    assert action.native_value == 'action_required'
     next_value = next_action.native_value
     assert next_value == datetime(2099, 1, 1, tzinfo=timezone.utc)
     merged = coordinator.get_merged_device(serial, "fermenting")
@@ -415,7 +416,7 @@ def test_device_attention_survives_independent_mqtt_countdown(
         overview,
         [{"serial_number": serial, "user_action": 0, "process_estimate_remaining": None}],
     )
-    assert action.native_value == "No action required"
+    assert action.native_value == 'no_action_required'
     assert next_action.native_value == datetime(2099, 1, 1, tzinfo=timezone.utc)
     coordinator.realtime.get_telemetry = lambda serial: None
     assert next_action.native_value is None
@@ -454,10 +455,10 @@ def test_anonymized_capture_reports_rest_action_and_mqtt_deadline(action_class, 
         message["next_action_at"] = sensor._coerce_timestamp(message["next_action_at"])
         coordinator.realtime.get_telemetry = lambda serial: SimpleNamespace(**message)
         assert action.available
-        assert action.native_value == "Action required"
+        assert action.native_value == 'action_required'
         assert next_action.available
         assert next_action.native_value == message["next_action_at"].replace(second=0, microsecond=0)
-        assert prompt.native_value == "Place trub container"
+        assert prompt.native_value == 'place_trub_container'
         assert prompt.unique_id == f"{serial}_required_action"
         for entity in (action, next_action, prompt):
             attrs = entity.extra_state_attributes
@@ -469,7 +470,7 @@ def test_anonymized_capture_reports_rest_action_and_mqtt_deadline(action_class, 
             assert attrs["mqtt_next_action_at"] == message["next_action_at"]
             assert attrs["mqtt_session_matches"] is True
             assert attrs["deadline_status"] == "provided"
-            assert attrs["required_action"] == "Place trub container"
+            assert attrs["required_action"] == 'place_trub_container'
             assert attrs["action_status"] == "Waiting for user action"
             assert attrs["waiting_since"] is None
 
@@ -479,12 +480,13 @@ def test_anonymized_capture_reports_rest_action_and_mqtt_deadline(action_class, 
     [
         (None, None),
         ({}, None),
-        ({"user_action": 0}, "No action required"),
-        ({"user_action": 30}, "Place trub container"),
-        ({"user_action": 4}, "Add ingredient"),
-        ({"user_action": "30"}, "Place trub container"),
-        ({"user_action": 999}, "Unknown action (999)"),
-        ({"user_action_name": "ACTION_PLACE_TRUB_CONTAINER"}, "Place trub container"),
+        ({"user_action": 0}, 'no_action_required'),
+        ({"user_action": 30}, 'place_trub_container'),
+        ({"user_action": 4}, 'add_ingredient'),
+        ({"user_action": "30"}, 'place_trub_container'),
+        ({"user_action": 999}, "unknown_action"),
+        ({"user_action_name": "ACTION_FUTURE_PROMPT"}, "unknown_action"),
+        ({"user_action_name": "ACTION_PLACE_TRUB_CONTAINER"}, 'place_trub_container'),
     ],
 )
 def test_required_action_description(device, expected):
@@ -516,7 +518,7 @@ def test_localized_display_name_cannot_change_legacy_unique_ids(prefix):
     assert before == ("example-keg_beer_name" if prefix == "Craft" else "example-keg_Beer Name")
 
 
-def test_enum_translation_keys_match_preserved_state_values():
+def test_enum_translation_keys_match_state_tokens():
     strings = json.loads((_ROOT / "strings.json").read_text())
     english = json.loads((_ROOT / "translations" / "en.json").read_text())
     assert strings == english
@@ -528,7 +530,36 @@ def test_enum_translation_keys_match_preserved_state_values():
         entity = _entity(name, _coordinator({}), "example-keg", "serving")
         options = entity.options if hasattr(type(entity), "options") else cls._attr_options
         states = strings["entity"]["sensor"][cls._attr_translation_key]["state"]
+        assert all(re.fullmatch(r"[a-z0-9]+(?:[-_][a-z0-9]+)*", key) for key in states)
+        assert all(re.fullmatch(r"[a-z0-9]+(?:[-_][a-z0-9]+)*", option) for option in options)
         assert set(options) <= set(states), name
+
+
+@pytest.mark.parametrize("filename", ["strings.json", "translations/en.json"])
+def test_all_entity_translation_keys_follow_home_assistant_schema(filename):
+    data = json.loads((_ROOT / filename).read_text())
+
+    def check_keys(value):
+        if not isinstance(value, dict):
+            return
+        for key, child in value.items():
+            assert re.fullmatch(r"[a-z0-9]+(?:[-_][a-z0-9]+)*", key), key
+            check_keys(child)
+
+    check_keys(data["entity"])
+
+
+@pytest.mark.parametrize("prefix", ["Craft", "Keg"])
+def test_unknown_action_has_a_translated_finite_option_and_keeps_source_code(prefix):
+    coordinator = _coordinator({"fermenting": [{
+        "serial_number": "example-keg", "online": True, "user_action": 999,
+    }]})
+    entity = _entity(f"{prefix}RequiredActionSensor", coordinator, "example-keg", "fermenting")
+    assert entity.native_value == "unknown_action"
+    assert entity.native_value in entity.options
+    assert entity.extra_state_attributes["rest_user_action"] == 999
+    translations = json.loads((_ROOT / "strings.json").read_text())
+    assert translations["entity"]["sensor"]["required_action"]["state"]["unknown_action"] == "Unknown action"
 
 
 @pytest.mark.parametrize("prefix", ["Craft", "Keg"])
@@ -543,11 +574,11 @@ def test_action_diagnostics_do_not_reuse_failed_rest_or_previous_session(prefix)
     )
     coordinator._session_created_by_id[100] = datetime(2025, 1, 1, tzinfo=timezone.utc)
     entity = _entity(f"{prefix}RequiredActionSensor", coordinator, "example-keg", "fermenting")
-    assert entity.native_value == "Place trub container"
+    assert entity.native_value == 'place_trub_container'
     assert entity.extra_state_attributes["mqtt_session_matches"] is False
     assert entity.extra_state_attributes["action_conflict"] is None
     coordinator.last_update_success = False
-    assert entity.native_value == "Add ingredient"
+    assert entity.native_value == 'add_ingredient'
     assert entity.extra_state_attributes["rest_user_action"] is None
     assert entity.extra_state_attributes["action_conflict"] is None
 
@@ -566,13 +597,13 @@ def test_required_action_clears_on_rest_refresh_and_mqtt_deadline_resumes(prefix
         telemetry={serial: SimpleNamespace(user_action=0, next_action_at=deadline)},
     )
     entity = _entity(f"{prefix}RequiredActionSensor", coordinator, serial, "fermenting")
-    assert entity.native_value == "Place trub container"
+    assert entity.native_value == 'place_trub_container'
     assert entity.extra_state_attributes["action_status"] == "Waiting for user action"
     assert entity.extra_state_attributes["waiting_since"] == entered_state
     sensor._merge_device_status_from_devices(
         coordinator.data, [{"serial_number": serial, "user_action": 0}]
     )
-    assert entity.native_value == "No action required"
+    assert entity.native_value == 'no_action_required'
     assert entity.extra_state_attributes["action_status"] == "No action required"
     assert entity.extra_state_attributes["waiting_since"] is None
     assert entity.extra_state_attributes["action_conflict"] is False
@@ -596,7 +627,7 @@ def test_new_mqtt_action_does_not_inherit_previous_rest_wait_time(prefix, rest_o
     )
     coordinator.last_update_success = rest_ok
     entity = _entity(f"{prefix}RequiredActionSensor", coordinator, serial, "fermenting")
-    assert entity.native_value == "Add ingredient"
+    assert entity.native_value == 'add_ingredient'
     assert entity.extra_state_attributes["action_status"] == "Waiting for user action"
     assert entity.extra_state_attributes["waiting_since"] is None
 
@@ -759,7 +790,7 @@ def test_connected_source_with_missing_value_is_unknown(class_name):
 
 
 @pytest.mark.parametrize("class_name", sorted(_CONNECTION_SENSORS))
-@pytest.mark.parametrize(("online", "expected"), [(True, "Online"), (False, "Offline"), (None, None)])
+@pytest.mark.parametrize(("online", "expected"), [(True, 'online'), (False, 'offline'), (None, None)])
 def test_cloud_status_does_not_invent_offline_for_missing_status(class_name, online, expected):
     coordinator = _coordinator({"serving": [{"serial_number": "serial-1", "online": online}]})
     entity = _entity(class_name, coordinator, "serial-1", "serving")
@@ -870,7 +901,7 @@ def test_valid_zero_measurements_are_not_hidden(class_name):
     coordinator = _coordinator({}, telemetry={"serial-1": telemetry})
     entity = _entity(class_name, coordinator, "serial-1", "serving")
     assert entity.available
-    assert entity.native_value == ("Off" if "Button" in class_name else 0)
+    assert entity.native_value == ('off' if "Button" in class_name else 0)
 
 
 @pytest.mark.parametrize("class_name", ["CraftTempControlPowerSensor", "KegTempControlPowerSensor", "CraftPeltierModeSensor", "KegPeltierModeSensor"])
@@ -878,7 +909,7 @@ def test_zero_peltier_power_is_valid_idle_state(class_name):
     coordinator = _coordinator({}, telemetry={"serial-1": SimpleNamespace(temp_control_power=0)})
     entity = _entity(class_name, coordinator, "serial-1", "serving")
     assert entity.available
-    assert entity.native_value == ("Idle" if "Mode" in class_name else 0)
+    assert entity.native_value == ('idle' if "Mode" in class_name else 0)
 
 
 @pytest.mark.parametrize("class_name", ["CraftUserActionRequiredSensor", "KegActionRequiredSensor"])
@@ -889,11 +920,11 @@ def test_action_clear_reaches_entity_state(class_name):
     )
     entity = _entity(class_name, coordinator, "serial-1", "serving")
     assert entity.available
-    assert entity.native_value == "Action required"
+    assert entity.native_value == 'action_required'
     sensor._merge_device_status_from_devices(
         coordinator.data, [{"serial_number": "serial-1", "user_action": 0}]
     )
-    assert entity.native_value == "No action required"
+    assert entity.native_value == 'no_action_required'
     coordinator.realtime.get_telemetry = lambda serial: None
     device["user_action"] = None
     assert entity.native_value is None
@@ -921,7 +952,7 @@ def test_expiry_updates_device_availability_and_online_period_without_rest_poll(
     assert entity.native_value == 19
     assert not other.available
     assert cloud.available
-    assert cloud.native_value == "Online"
+    assert cloud.native_value == 'online'
     manager._last_received["serial-1"] -= timedelta(seconds=60)
     manager._async_expire_telemetry("serial-1")
     assert "serial-1" not in coordinator._online_since
@@ -1017,7 +1048,7 @@ def test_mqtt_gate_ignores_stale_session_and_stage_and_supports_sessionless_clea
 @pytest.mark.parametrize("prefix", ["Craft", "Keg"])
 def test_portal_idle_response_cannot_restore_ended_session_from_caches(prefix):
     device = {
-        "serial_number": "serial-1", "online": True, "stage": "Idle",
+        "serial_number": "serial-1", "online": True, "stage": 'idle',
         "process_type": 0, "session_id": None, "user_action": 0,
         "target_temp": None, "current_temp": None, "beer_name": None,
         "beer_style": None,
