@@ -5,14 +5,16 @@ environment needs no Home Assistant or cloud client dependencies.
 """
 
 import ast
+import asyncio
 import dataclasses
 import importlib.util
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from enum import IntEnum
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -30,6 +32,8 @@ class Device:
     process_estimate_remaining: datetime | None = None
     active_session: int | None = None
     process_phase: int | None = None
+    user_action: int | None = None
+    process_state: int | None = None
     metadata: object = None
 
 
@@ -70,6 +74,10 @@ def _load_sensor_reads():
         "_device_serial",
         "_firmware_version",
         "_coerce_session_id",
+        "_coerce_timestamp",
+        "_next_action_state",
+        "_display_option",
+        "_user_action_required_state",
         "_session_id_from_device_dict",
         "_overlay_mqtt",
         "_current_stage_group",
@@ -78,13 +86,9 @@ def _load_sensor_reads():
         "_collect_serials",
         "_mqtt_serials",
         "_is_auth_error",
-        "_merge_last_time_online_from_devices",
-        "_coerce_timestamp",
-        "_next_action_state",
+        "_merge_device_status_from_devices",
         "_sensor_available",
         "_cloud_connection_state",
-        "_display_option",
-        "_user_action_required_state",
         "_telemetry_sensor_value",
         "_telemetry_temp_control_power",
         "_peltier_mode",
@@ -93,9 +97,13 @@ def _load_sensor_reads():
         "CraftSensor",
         "CraftBeerStyleSensor",
         "CraftBeerNameSensor",
+        "CraftUserActionRequiredSensor",
+        "CraftNextActionDateTimeSensor",
         "KegSensor",
         "KegBeerStyleSensor",
         "KegBeerNameSensor",
+        "KegActionRequiredSensor",
+        "KegNextActionDateTimeSensor",
     }
     path = _ROOT / "sensor.py"
     tree = ast.parse(path.read_text(), filename=str(path))
@@ -337,10 +345,160 @@ def test_discovery_and_supplemental_timestamps_preserved():
     coordinator = _coordinator({})
     assert sensor._collect_serials(coordinator, overview) == {"serial-1"}
     when = datetime(2026, 10, 10, tzinfo=timezone.utc)
-    sensor._merge_last_time_online_from_devices(
+    sensor._merge_device_status_from_devices(
         overview, [{"serial_number": "serial-1", "last_time_online": when}]
     )
     assert device.last_time_online == when
+
+
+@pytest.mark.parametrize(
+    ("action_class", "time_class"),
+    [
+        ("CraftUserActionRequiredSensor", "CraftNextActionDateTimeSensor"),
+        ("KegActionRequiredSensor", "KegNextActionDateTimeSensor"),
+    ],
+)
+@pytest.mark.parametrize("mqtt_action", [None, 0])
+def test_device_attention_and_deadline_survive_mqtt_countdown(
+    action_class, time_class, mqtt_action
+):
+    serial = "example-keg"
+    overview = SimpleNamespace(
+        fermenting=[{
+            "serial_number": serial, "user_action": 0,
+            "active_session": 100, "online": True,
+        }]
+    )
+    deadline = datetime(2025, 1, 1, 0, 0, 30, tzinfo=timezone.utc)
+    sensor._merge_device_status_from_devices(
+        overview,
+        [{
+            "serial_number": serial,
+            "current_state": 2,
+            "process_type": 4,
+            "process_state": 78,
+            "user_action": 30,
+            "process_estimate_remaining": deadline,
+            "text": "Needs your attention",
+        }],
+    )
+    coordinator = _coordinator(
+        vars(overview),
+        telemetry={serial: SimpleNamespace(
+            user_action=mqtt_action,
+            next_action_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+            seconds_until_next_action=604800,
+        )},
+    )
+    coordinator._session_created_by_id[100] = deadline
+    action = _entity(action_class, coordinator, serial, "fermenting")
+    next_action = _entity(time_class, coordinator, serial, "fermenting")
+    next_action._cached_value = None
+
+    assert action.native_value == "Action required"
+    next_value = next_action.native_value
+    assert next_value == deadline.replace(second=0, microsecond=0)
+    merged = coordinator.get_merged_device(serial, "fermenting")
+    assert merged["process_state"] == 78
+    assert merged["process_estimate_remaining"] == deadline
+    assert next_action.native_value == next_value
+
+    sensor._merge_device_status_from_devices(
+        overview,
+        [{"serial_number": serial, "user_action": 0, "process_estimate_remaining": None}],
+    )
+    assert action.native_value == "No action required"
+    assert next_action.native_value == datetime(2099, 1, 1, tzinfo=timezone.utc)
+    coordinator.realtime.get_telemetry = lambda serial: None
+    assert next_action.native_value is None
+
+
+@pytest.mark.parametrize(
+    ("action_class", "time_class"),
+    [
+        ("CraftUserActionRequiredSensor", "CraftNextActionDateTimeSensor"),
+        ("KegActionRequiredSensor", "KegNextActionDateTimeSensor"),
+    ],
+)
+def test_anonymized_capture_reports_required_action_with_unknown_deadline(action_class, time_class):
+    fixture = Path(__file__).parent / "fixtures" / "pending_action_mqtt.json"
+    capture = json.loads(fixture.read_text())
+    rest_device = capture["rest_device"]
+    serial = rest_device["serial_number"]
+    overview = SimpleNamespace(fermenting=[{
+        "serial_number": serial, "active_session": rest_device["active_session"],
+        "online": True,
+    }])
+    sensor._merge_device_status_from_devices(overview, [rest_device])
+    coordinator = _coordinator(vars(overview))
+    coordinator._session_created_by_id[rest_device["active_session"]] = datetime(
+        2025, 1, 1, tzinfo=timezone.utc
+    )
+    action = _entity(action_class, coordinator, serial, "fermenting")
+    next_action = _entity(time_class, coordinator, serial, "fermenting")
+    for raw in capture["mqtt_messages"]:
+        message = dict(raw)
+        message["next_action_at"] = sensor._coerce_timestamp(message["next_action_at"])
+        coordinator.realtime.get_telemetry = lambda serial: SimpleNamespace(**message)
+        assert action.available
+        assert action.native_value == "Action required"
+        assert next_action.available
+        assert next_action.native_value is None
+
+
+def test_coordinator_refresh_merges_device_status_before_publishing_overview():
+    overview = SimpleNamespace(
+        fermenting=[{"serial_number": "serial-1", "user_action": 0}]
+    )
+    coordinator = _coordinator({})
+    coordinator.client = SimpleNamespace(get_brewery_overview=Mock(), get_devices=Mock())
+    coordinator.hass.async_add_executor_job = AsyncMock(
+        side_effect=[overview, [{"serial_number": "serial-1", "user_action": 30}]]
+    )
+    coordinator._async_refresh_session_metadata = AsyncMock()
+    coordinator.realtime = None
+
+    result = asyncio.run(coordinator._async_update_data())
+
+    assert result is overview
+    assert result.fermenting[0]["user_action"] == 30
+    coordinator._async_refresh_session_metadata.assert_awaited_once_with(overview)
+
+
+@pytest.mark.parametrize("use_dataclass", [False, True])
+def test_device_status_merge_is_serial_scoped_and_preserves_overview_metadata(use_dataclass):
+    device = Device("serial-1") if use_dataclass else {
+        "serial_number": "serial-1", "beer_name": "Test beer", "user_action": 30
+    }
+    overview = SimpleNamespace(fermenting=[device])
+    sensor._merge_device_status_from_devices(
+        overview,
+        [
+            {"serial_number": "other", "user_action": 4},
+            {
+                "serial_number": "serial-1",
+                "user_action": 0,
+                "process_state": 80,
+                "process_estimate_remaining": None,
+                "beer_name": None,
+            },
+        ],
+    )
+    merged = sensor._device_to_dict(device)
+    assert merged["user_action"] == 0
+    assert merged["process_state"] == 80
+    assert merged["process_estimate_remaining"] is None
+    assert merged["beer_name"] == "Test beer"
+
+
+def test_missing_device_status_fields_do_not_clear_overview():
+    device = {"serial_number": "serial-1", "user_action": 30, "text": "Needs your attention"}
+    overview = SimpleNamespace(fermenting=[device])
+    sensor._merge_device_status_from_devices(
+        overview, [{"serial_number": "serial-1", "user_action": None}]
+    )
+    assert device["user_action"] == 30
+    assert device["text"] == "Needs your attention"
 
 
 def test_slotted_dataclass_device_conversion(monkeypatch):
@@ -576,6 +734,10 @@ def test_action_clear_reaches_entity_state(class_name):
     )
     entity = _entity(class_name, coordinator, "serial-1", "serving")
     assert entity.available
+    assert entity.native_value == "Action required"
+    sensor._merge_device_status_from_devices(
+        coordinator.data, [{"serial_number": "serial-1", "user_action": 0}]
+    )
     assert entity.native_value == "No action required"
     coordinator.realtime.get_telemetry = lambda serial: None
     device["user_action"] = None

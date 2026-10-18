@@ -298,22 +298,35 @@ def _is_auth_error(err: Exception) -> bool:
     )
 
 
-def _merge_last_time_online_from_devices(overview, devices):
-    """Fill missing overview last_time_online values from /v1/devices by serial."""
+def _merge_device_status_from_devices(overview, devices):
+    """Merge device status from /v1/devices into the discovery overview by serial."""
     if overview is None or not devices:
         return
 
-    last_seen_by_serial = {}
+    status_fields = (
+        "last_time_online",
+        "current_state",
+        "process_type",
+        "process_state",
+        "user_action",
+        "last_process_state_change",
+        "process_estimate_remaining",
+        "text",
+    )
+    status_by_serial = {}
     for device in devices:
         device_dict = _device_to_dict(device)
         serial = device_dict.get("serial_number")
         if not serial:
             continue
-        last_seen = device_dict.get("last_time_online")
-        if last_seen is not None:
-            last_seen_by_serial[serial] = last_seen
+        status_by_serial[serial] = {
+            key: device_dict[key]
+            for key in status_fields
+            if key in device_dict
+            and (device_dict[key] is not None or key == "process_estimate_remaining")
+        }
 
-    if not last_seen_by_serial:
+    if not status_by_serial:
         return
 
     for grouped_devices in overview.__dict__.values():
@@ -322,13 +335,11 @@ def _merge_last_time_online_from_devices(overview, devices):
             serial = device_dict.get("serial_number")
             if not serial:
                 continue
-            merged_last_seen = last_seen_by_serial.get(serial)
-            if merged_last_seen is None:
-                continue
-            if isinstance(device, dict):
-                device["last_time_online"] = merged_last_seen
-            else:
-                setattr(device, "last_time_online", merged_last_seen)
+            for key, value in status_by_serial.get(serial, {}).items():
+                if isinstance(device, dict):
+                    device[key] = value
+                else:
+                    setattr(device, key, value)
 
 
 def _format_duration_seconds(value):
@@ -724,9 +735,9 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
 
         try:
             devices = await self.hass.async_add_executor_job(self.client.get_devices)
-            _merge_last_time_online_from_devices(data, devices)
+            _merge_device_status_from_devices(data, devices)
         except Exception as err:  # noqa: BLE001 - supplemental endpoint; don't fail the whole update
-            _LOGGER.warning("MiniBrew: could not fetch device list (last_time_online may be stale): %s", err)
+            _LOGGER.warning("MiniBrew: could not fetch device list (device status may be stale): %s", err)
 
         try:
             await self._async_refresh_session_metadata(data)

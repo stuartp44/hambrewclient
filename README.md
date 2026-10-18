@@ -84,6 +84,7 @@ After adding the integration, you can configure additional options:
 - **Real-time discovery interval**: How often to refresh discovery and fallback data from REST while MQTT drives live telemetry (default: 300 seconds)
 - MQTT-backed sensors report `Unavailable` until fresh telemetry arrives from that device. If telemetry is arriving but an individual field is missing, that sensor reports `Unknown`.
 - The integration requests frequent device logs automatically and re-requests them after five seconds without incoming telemetry. Opening the MiniBrew portal or iOS app should not be necessary to start the stream; offline devices still cannot provide live data.
+- REST refreshes supplement discovery with device-status fields, including pending user actions and their estimated deadlines. When MQTT reports no action but REST reports a pending action, both the REST action and its deadline are retained; a background process countdown does not replace that deadline. Clearing the REST action allows the MQTT countdown to take over again.
 
 To access options:
 1. Go to **Settings** → **Devices & Services**
@@ -146,6 +147,28 @@ logger:
     custom_components.minibrew: debug
     pymbrewclient: debug
 ```
+
+### Action required but Next Action is Unknown
+
+`Next Action` is a timestamp, not the description of the required action.
+MiniBrew can report a pending action without providing its deadline.
+
+The [anonymized live-capture excerpt](tests/fixtures/pending_action_mqtt.json)
+demonstrates this case:
+
+- REST reports action `30` (place trub container), process state `78`, and no deadline.
+- MQTT reports the same session and process state, but action `0` (undefined).
+- Two MQTT messages 29.020 seconds apart both report `604800` seconds (seven days)
+  until the next action. The calculated timestamp advances rather than counting down.
+- The integration retains the REST action and leaves the deadline unknown rather
+  than presenting that moving timestamp as the pending action's deadline.
+
+The excerpt contains only selected decoded fields from the first and last messages
+of a 30-message capture. Device and session identifiers and absolute timestamps are
+replaced with example values; relative timing and relevant protocol values are
+preserved. Raw protobuf payloads and unrelated metadata are deliberately excluded
+to avoid publishing identifying or unknown embedded fields. This sample documents
+observed behavior, not a claim that all MQTT countdowns behave this way.
 
 ## Contributing
 

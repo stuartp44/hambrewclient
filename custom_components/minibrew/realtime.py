@@ -79,12 +79,23 @@ def overlay_mqtt(device: dict, telemetry, *, include_session=True) -> None:
     """Overlay live MQTT telemetry onto a REST device dict, in place.
 
     Only non-``None`` telemetry values win, so a missing field never clobbers
-    the value from the last REST poll.
+    the value from the last REST poll. A pending REST action and its deadline
+    are preserved when MQTT supplies no action context.
     """
     if telemetry is None:
         return
+    rest_action = device.get("user_action")
+    preserve_rest_action = (
+        isinstance(rest_action, (int, float))
+        and rest_action > 0
+        and getattr(telemetry, "user_action", None) in (None, 0)
+    )
     for attr, device_key in _TELEMETRY_TO_DEVICE_KEY.items():
         if not include_session and attr not in {"current_temperature"}:
+            continue
+        if preserve_rest_action and attr in (
+            "user_action", "next_action_at", "seconds_until_next_action"
+        ):
             continue
         value = getattr(telemetry, attr, None)
         if value is not None:
