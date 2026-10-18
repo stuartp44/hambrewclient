@@ -356,6 +356,136 @@ def _manager_with_device():
     return manager, coordinator
 
 
+def test_stop_releases_all_telemetry_and_timer_references():
+    import asyncio
+
+    manager, _ = _manager_with_device()
+    handle = manager._expiry_handles["serial-1"]
+    asyncio.run(manager.async_stop())
+    handle.cancel.assert_called_once()
+    for name in ("_telemetry", "_fingerprints", "_last_received", "_last_update", "_expiry_handles"):
+        assert getattr(manager, name) == {}
+
+
+def test_removed_devices_do_not_accumulate_in_realtime_caches():
+    import asyncio
+    from unittest.mock import Mock
+
+    manager, _ = _manager_with_device()
+    manager._mqtt = Mock()
+    manager.hass.async_add_executor_job = None
+    manager._subscribed = {"serial-1"}
+
+    async def executor(func, *args):
+        return func(*args)
+
+    manager.hass.async_add_executor_job = executor
+    asyncio.run(manager.async_set_online_devices({"replacement"}))
+    for name in ("_telemetry", "_fingerprints", "_last_received", "_last_update", "_expiry_handles"):
+        assert "serial-1" not in getattr(manager, name)
+
+
+def test_10000_packets_retain_only_latest_message_and_release_on_stop():
+    import asyncio
+    import gc
+    import weakref
+
+    class Message:
+        def __init__(self, index):
+            self.device_uuid = "example-keg"
+            self.user_action = index % 2
+            self.payload = bytes(8192)
+
+    async def scenario():
+        coordinator = SimpleNamespace(async_update_listeners=lambda: None)
+        manager = realtime.MiniBrewRealtimeManager(
+            SimpleNamespace(loop=asyncio.get_running_loop()), coordinator, client=None
+        )
+        manager._online_serials = {"example-keg"}
+        manager._connected = True
+        refs = []
+        for batch in range(20):
+            for index in range(500):
+                message = Message(batch * 500 + index)
+                refs.append(weakref.ref(message))
+                manager._handle_device_log(message)
+            del message
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            gc.collect()
+            assert sum(ref() is not None for ref in refs) == 1
+            assert len(manager._telemetry) == 1
+            assert len(manager._expiry_handles) == 1
+        await manager.async_stop()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        gc.collect()
+        assert all(ref() is None for ref in refs)
+        assert manager._expiry_handles == {}
+        manager_ref = weakref.ref(manager)
+        del manager
+        gc.collect()
+        assert manager_ref() is None
+
+    asyncio.run(scenario())
+
+
+def test_100_start_stop_cycles_release_mqtt_clients_and_managers():
+    import asyncio
+    import gc
+    import weakref
+
+    refs = []
+    disconnected = []
+
+    class Mqtt:
+        def on_device_log(self, callback):
+            self.log_callback = callback
+
+        def on_connected(self, callback):
+            self.connected_callback = callback
+
+        def on_disconnected(self, callback):
+            self.disconnected_callback = callback
+
+        def on_error(self, callback):
+            self.error_callback = callback
+
+        def connect(self):
+            pass
+
+        def disconnect(self):
+            disconnected.append(True)
+
+    def create_client():
+        client = Mqtt()
+        refs.append(weakref.ref(client))
+        return client
+
+    async def executor(func, *args):
+        return func(*args)
+
+    async def scenario():
+        hass = SimpleNamespace(
+            loop=asyncio.get_running_loop(), async_add_executor_job=executor
+        )
+        coordinator = SimpleNamespace(async_update_listeners=lambda: None)
+        for _ in range(100):
+            manager = realtime.MiniBrewRealtimeManager(
+                hass, coordinator, SimpleNamespace(create_mqtt_client=create_client)
+            )
+            refs.append(weakref.ref(manager))
+            await manager.async_start({"example-keg"})
+            await manager.async_stop()
+            del manager
+            await asyncio.sleep(0)
+            gc.collect()
+            assert all(ref() is None for ref in refs)
+        assert len(disconnected) == 100
+
+    asyncio.run(scenario())
+
+
 def test_disconnect_clears_telemetry_and_reconnect_does_not_resurrect_it():
     manager, _ = _manager_with_device()
     assert manager.get_telemetry("serial-1").user_action == 5

@@ -141,6 +141,14 @@ class MiniBrewRealtimeManager:
                 _LOGGER.info("MiniBrew realtime: pausing MQTT until REST reports an online device with an active process")
                 await self.async_stop()
             return
+        with self._telemetry_lock:
+            for cache in (
+                self._telemetry, self._fingerprints, self._last_received, self._last_update
+            ):
+                for serial in set(cache) - self._online_serials:
+                    cache.pop(serial, None)
+        for serial in set(self._expiry_handles) - self._online_serials:
+            self._expiry_handles.pop(serial).cancel()
         for serial in self._subscribed - self._online_serials:
             if self._mqtt is not None:
                 await self.hass.async_add_executor_job(self._mqtt.unsubscribe_device_logs, serial)
@@ -235,7 +243,7 @@ class MiniBrewRealtimeManager:
         handle = self._expiry_handles.pop(serial, None)
         if handle is not None:
             handle.cancel()
-        if self._stopped:
+        if self._stopped or serial not in self._online_serials:
             return
         self._expiry_handles[serial] = self.hass.loop.call_later(
             _TELEMETRY_MAX_AGE.total_seconds(), self._async_expire_telemetry, serial
@@ -257,6 +265,7 @@ class MiniBrewRealtimeManager:
             self._telemetry.pop(serial, None)
             self._fingerprints.pop(serial, None)
             self._last_received.pop(serial, None)
+            self._last_update.pop(serial, None)
         self.coordinator.async_update_listeners()
 
     def _clear_telemetry(self):
@@ -264,6 +273,7 @@ class MiniBrewRealtimeManager:
             self._telemetry.clear()
             self._fingerprints.clear()
             self._last_received.clear()
+            self._last_update.clear()
 
         def cancel_expiry():
             for handle in self._expiry_handles.values():

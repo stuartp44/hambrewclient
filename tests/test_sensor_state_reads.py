@@ -1025,9 +1025,55 @@ def test_session_lookup_finishing_after_reset_does_not_restore_device_cache():
         await coordinator._async_ensure_session_created("serial-1", 82991)
         assert "serial-1" not in coordinator._session_created_by_serial
         assert coordinator._session_lookup_inflight == set()
-        assert coordinator._session_created_by_id[82991] == when
+        assert 82991 not in coordinator._session_created_by_id
 
     asyncio.run(scenario())
+
+
+def test_session_cache_stays_bounded_across_500_sessions():
+    async def scenario():
+        coordinator = _coordinator({})
+        coordinator._async_fetch_session_started = AsyncMock(
+            return_value=datetime(2025, 1, 1, tzinfo=timezone.utc)
+        )
+        for session_id in range(1, 501):
+            overview = SimpleNamespace(fermenting=[{
+                "serial_number": "example-keg", "active_session": session_id,
+            }])
+            await coordinator._async_refresh_session_metadata(overview)
+            assert set(coordinator._session_created_by_id) == {session_id}
+        await coordinator._async_refresh_session_metadata(SimpleNamespace(brew_clean_idle=[]))
+        assert coordinator._session_created_by_id == {}
+        assert coordinator._session_created_by_serial == {}
+
+    asyncio.run(scenario())
+
+
+def test_discovery_listener_unsubscribes_on_entry_unload():
+    path = _ROOT / "sensor.py"
+    tree = ast.parse(path.read_text(), filename=str(path))
+    tree.body = [node for node in tree.body if getattr(node, "name", None) == "async_setup_entry"]
+    unsubscribe = Mock()
+    coordinator = SimpleNamespace(
+        data=SimpleNamespace(), realtime_enabled=False,
+        async_config_entry_first_refresh=AsyncMock(),
+        async_add_listener=Mock(return_value=unsubscribe),
+    )
+    entry = SimpleNamespace(entry_id="example", async_on_unload=Mock())
+    hass = SimpleNamespace(data={"minibrew": {"example": {"client": object()}}})
+    namespace = {
+        "DOMAIN": "minibrew",
+        "_LOGGER": logging.getLogger(__name__),
+        "MiniBrewDataUpdateCoordinator": Mock(return_value=coordinator),
+        "_disable_legacy_esp_core_temp_entities": Mock(),
+        "_migrate_legacy_fan_entities": Mock(),
+        "_collect_serials": lambda coordinator: set(),
+    }
+    exec(compile(tree, str(path), "exec"), namespace)
+    asyncio.run(namespace["async_setup_entry"](hass, entry, Mock()))
+    entry.async_on_unload.assert_called_once_with(unsubscribe)
+    entry.async_on_unload.call_args.args[0]()
+    unsubscribe.assert_called_once()
 
 
 @pytest.mark.parametrize("error", [ConnectionError("network down"), PermissionError("401 unauthorized")])

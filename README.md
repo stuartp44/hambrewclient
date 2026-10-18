@@ -138,6 +138,19 @@ Once configured, your MiniBrew devices will appear as separate devices in Home A
 - Check if the MiniBrew service is online
 - Review Home Assistant logs for detailed error messages
 
+### Memory and lifecycle
+
+The integration retains only the latest MQTT message per active device and
+session-start timestamps for current sessions. Removed devices, expired telemetry,
+and stopped MQTT streams release their telemetry metadata and expiry timers.
+The discovery listener is unsubscribed when the config entry unloads.
+
+Regression tests exercise 10,000 messages with object-retention checks, 500
+successive sessions, timer cleanup, and discovery-listener teardown. These check
+bounded retention in the integration, including 100 start/stop cycles with fake
+MQTT clients; they are not a long-running memory profile
+of a live Home Assistant process or its MQTT/network dependencies.
+
 ### Enable debug logging
 
 Add the following to your `configuration.yaml`:

@@ -775,7 +775,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         if new_sensors:
             async_add_entities(new_sensors)
 
-    coordinator.async_add_listener(handle_coordinator_update)
+    config_entry.async_on_unload(
+        coordinator.async_add_listener(handle_coordinator_update)
+    )
 
 class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching MiniBrew data from the API."""
@@ -956,6 +958,8 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
         self._session_lookup_inflight.add(lookup_key)
 
         try:
+            if self._active_session_by_serial.get(serial) != session_id:
+                return
             cached_created = self._session_created_by_id.get(session_id)
             if cached_created is not None:
                 self._session_created_by_serial[serial] = cached_created
@@ -970,9 +974,9 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("MiniBrew lazy session lookup returned no start timestamp for %s", session_id)
                 return
 
-            self._session_created_by_id[session_id] = created
             if self._active_session_by_serial.get(serial) != session_id:
                 return
+            self._session_created_by_id[session_id] = created
             self._session_created_by_serial[serial] = created
             _LOGGER.debug("MiniBrew cached session start for %s (%s): %s", serial, session_id, created)
             self.async_update_listeners()
@@ -1033,6 +1037,13 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
                 session_by_serial[serial] = session_id
 
         self._active_session_by_serial = session_by_serial
+        active_session_ids = {
+            session_id for session_id in session_by_serial.values()
+            if session_id is not None
+        }
+        for session_id in list(self._session_created_by_id):
+            if session_id not in active_session_ids:
+                self._session_created_by_id.pop(session_id, None)
 
         for serial, session_id in session_by_serial.items():
             if session_id is None:
