@@ -60,6 +60,9 @@ class SensorType(IntEnum):
 
 
 class _Coordinator:
+    def __init__(self, *args, **kwargs):
+        self.update_interval = kwargs.get("update_interval")
+
     def async_update_listeners(self):
         pass
 
@@ -138,6 +141,7 @@ def _load_sensor_reads():
         "EntityCategory": SimpleNamespace(DIAGNOSTIC="diagnostic"),
         "_PROCESS_PHASE_OPTIONS": [],
         "datetime": datetime,
+        "timedelta": timedelta,
         "timezone": timezone,
         "fields": dataclasses.fields,
         "is_dataclass": dataclasses.is_dataclass,
@@ -146,6 +150,9 @@ def _load_sensor_reads():
         "overlay_mqtt": realtime.overlay_mqtt,
         "MiniBrewRealtimeManager": realtime.MiniBrewRealtimeManager,
         "DOMAIN": "minibrew",
+        "CONF_REALTIME_POLL_INTERVAL": "realtime_poll_interval",
+        "DEFAULT_REALTIME_POLL_INTERVAL": 300,
+        "MIN_REALTIME_POLL_INTERVAL": 60,
         "_LOGGER": logging.getLogger(__name__),
         "UpdateFailed": RuntimeError,
         "ConfigEntryAuthFailed": PermissionError,
@@ -1311,6 +1318,22 @@ def test_rest_refresh_controls_mqtt_gate(online, process_type):
     coordinator.realtime.async_set_online_devices.assert_awaited_once_with(
         {"serial-1"} if online is True and process_type in {1, 2, 3, 4, 5, 6} else set()
     )
+
+
+@pytest.mark.parametrize(
+    ("options", "expected_seconds"),
+    [
+        ({}, 300),
+        ({"realtime_poll_interval": 30}, 60),
+        ({"realtime_poll_interval": 60}, 60),
+        ({"realtime_poll_interval": 900}, 900),
+    ],
+)
+def test_rest_poll_interval_has_a_60_second_minimum(options, expected_seconds):
+    coordinator = sensor.MiniBrewDataUpdateCoordinator(
+        object(), object(), SimpleNamespace(options=options)
+    )
+    assert coordinator.update_interval == timedelta(seconds=expected_seconds)
 
 
 def test_mqtt_gate_ignores_stale_session_and_stage_and_supports_sessionless_cleaning():

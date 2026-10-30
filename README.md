@@ -83,7 +83,7 @@ This integration allows you to monitor and control your MiniBrew brewing devices
 
 After adding the integration, you can configure additional options:
 
-- **Real-time discovery interval**: How often to refresh discovery and fallback data from REST while MQTT drives live telemetry (default: 300 seconds)
+- **Real-time discovery interval**: How often to refresh discovery and fallback data from REST while MQTT drives live telemetry (minimum: 60 seconds; default: 300 seconds)
 - MQTT-backed sensors report `Unavailable` until fresh telemetry arrives from that device. If telemetry is arriving but an individual field is missing, that sensor reports `Unknown`.
 - The integration requests frequent device logs automatically and re-requests them after five seconds without incoming telemetry. Opening the MiniBrew portal or iOS app should not be necessary to start the stream; offline devices still cannot provide live data.
 - REST refreshes supplement discovery with device-status fields. Fresh, session-matching MQTT takes priority for required actions: a nonzero action code wins, otherwise recognized process states identify the prompt or clear it during automatic operation. Unrecognized/missing MQTT context falls back to REST. Independently, the MQTT countdown supplies `Next Action`, with REST as the timestamp fallback.
