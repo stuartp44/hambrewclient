@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0](https://github.com/stuartp44/hambrewclient/compare/v0.11.3...v0.12.0) (2026-11-24)
+
+
+### Added
+
+* enforce a 60-second minimum REST polling interval minibrew ([f939fd0](https://github.com/stuartp44/hambrewclient/commit/f939fd0df374b623ea70a68c8a967358b99b5df9))
+
+
+### Fixed
+
+* **sensor:** enforce 60-second minimum polling ([d00983d](https://github.com/stuartp44/hambrewclient/commit/d00983deef35efb5090343613e16c3f86eae224a))
+
 ## [0.11.3](https://github.com/stuartp44/hambrewclient/compare/v0.11.2...v0.11.3) (2026-10-18)
 
 
