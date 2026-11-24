@@ -7,6 +7,7 @@ from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
     CONF_REALTIME_POLL_INTERVAL,
+    MIN_REALTIME_POLL_INTERVAL,
     DEFAULT_REALTIME_POLL_INTERVAL,
     DOMAIN,
 )
@@ -158,7 +159,7 @@ class PymbrewClientOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(
                 CONF_REALTIME_POLL_INTERVAL,
                 default=options.get(CONF_REALTIME_POLL_INTERVAL, DEFAULT_REALTIME_POLL_INTERVAL),
-            ): int,
+            ): vol.All(int, vol.Range(min=MIN_REALTIME_POLL_INTERVAL)),
         })
 
         return self.async_show_form(

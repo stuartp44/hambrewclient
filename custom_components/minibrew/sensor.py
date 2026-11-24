@@ -15,6 +15,7 @@ from .const import (
     CONF_REALTIME_POLL_INTERVAL,
     DEFAULT_REALTIME_POLL_INTERVAL,
     DOMAIN,
+    MIN_REALTIME_POLL_INTERVAL,
 )
 from .realtime import MiniBrewRealtimeManager, overlay_mqtt
 
@@ -862,8 +863,9 @@ class MiniBrewDataUpdateCoordinator(DataUpdateCoordinator):
 
         options = config_entry.options
         self.realtime_enabled = True
-        realtime_poll_interval = options.get(
-            CONF_REALTIME_POLL_INTERVAL, DEFAULT_REALTIME_POLL_INTERVAL
+        realtime_poll_interval = max(
+            MIN_REALTIME_POLL_INTERVAL,
+            options.get(CONF_REALTIME_POLL_INTERVAL, DEFAULT_REALTIME_POLL_INTERVAL),
         )
 
         # MQTT is the primary source for fast-changing fields. REST polling is
